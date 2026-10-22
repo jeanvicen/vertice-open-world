@@ -1,0 +1,33 @@
+{
+  "name": "vertice-open-world",
+  "private": true,
+  "version": "0.1.0",
+  "type": "module",
+  "description": "An original cinematic open-world game foundation built with Three.js and TypeScript.",
+  "scripts": {
+    "dev": "vite",
+    "build": "npm run typecheck && vite build",
+    "preview": "vite preview",
+    "typecheck": "tsc --noEmit",
+    "lint": "eslint .",
+    "format": "prettier --write .",
+    "format:check": "prettier --check .",
+    "test": "vitest run --maxWorkers=1 --minWorkers=1 --no-file-parallelism",
+    "test:watch": "vitest"
+  },
+  "dependencies": {
+    "three": "0.180.0"
+  },
+  "devDependencies": {
+    "@types/three": "0.180.0",
+    "eslint": "9.37.0",
+    "prettier": "3.6.2",
+    "typescript": "5.9.3",
+    "typescript-eslint": "8.46.1",
+    "vite": "7.1.10",
+    "vitest": "3.2.4"
+  },
+  "engines": {
+    "node": ">=20.19.0"
+  }
+}
