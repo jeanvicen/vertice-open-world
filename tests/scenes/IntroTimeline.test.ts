@@ -34,7 +34,7 @@ describe('IntroTimeline', () => {
   it('plays every phase in order and reaches the menu exactly once', () => {
     const { timeline, changes } = record();
     timeline.start();
-    run(timeline, 60, 60);
+    run(timeline, 45, 60);
     expect(changes.map((change) => change.phase)).toEqual([...INTRO_PHASES]);
     expect(changes.filter((change) => change.phase === 'menu')).toHaveLength(1);
     expect(changes.every((change) => !change.skipped)).toBe(true);
@@ -46,20 +46,27 @@ describe('IntroTimeline', () => {
     const slow = record();
     fast.timeline.start();
     slow.timeline.start();
-    // 7.5 s is a whole number of frames at both rates.
-    expect(CINEMATIC_SCHEDULE.ship).toBeLessThan(7.5);
-    run(fast.timeline, 7.5, 144);
-    run(slow.timeline, 7.5, 8);
-    expect(fast.timeline.phase).toBe('ship');
-    expect(slow.timeline.phase).toBe('ship');
+    // 12 s is a whole number of frames at both rates and falls inside the battle.
+    expect(CINEMATIC_SCHEDULE.battle).toBeLessThan(12);
+    expect(CINEMATIC_SCHEDULE.hero).toBeGreaterThan(12);
+    run(fast.timeline, 12, 144);
+    run(slow.timeline, 12, 8);
+    expect(fast.timeline.phase).toBe('battle');
+    expect(slow.timeline.phase).toBe('battle');
     expect(fast.timeline.elapsed).toBeCloseTo(slow.timeline.elapsed, 6);
   });
 
   it('catches up through several phases after one long frame, still in order', () => {
     const { timeline, changes } = record();
     timeline.start();
-    timeline.advance(CINEMATIC_SCHEDULE.title + 0.01);
-    expect(changes.map((change) => change.phase)).toEqual(['void', 'cosmos', 'ship', 'title']);
+    timeline.advance(CINEMATIC_SCHEDULE.hero + 0.01);
+    expect(changes.map((change) => change.phase)).toEqual([
+      'void',
+      'studio',
+      'title',
+      'battle',
+      'hero',
+    ]);
   });
 
   it('skips to the menu once, marking the remaining phases as skipped', () => {
@@ -70,7 +77,15 @@ describe('IntroTimeline', () => {
     expect(timeline.skip()).toBe(false);
     run(timeline, 30, 60);
     expect(changes.map((change) => change.phase)).toEqual([...INTRO_PHASES]);
-    expect(changes.map((change) => change.skipped)).toEqual([false, false, true, true, true]);
+    expect(changes.map((change) => change.skipped)).toEqual([
+      false,
+      false,
+      true,
+      true,
+      true,
+      true,
+      true,
+    ]);
   });
 
   it('refuses to skip once the menu is showing or before the opening starts', () => {
@@ -78,7 +93,7 @@ describe('IntroTimeline', () => {
     expect(early.timeline.skip()).toBe(false);
     const done = record();
     done.timeline.start();
-    run(done.timeline, 30, 30);
+    run(done.timeline, 40, 30);
     expect(done.timeline.skip()).toBe(false);
     expect(done.changes.filter((change) => change.phase === 'menu')).toHaveLength(1);
   });
@@ -98,12 +113,16 @@ describe('IntroTimeline', () => {
     timeline.start();
     run(timeline, REDUCED_MOTION_SCHEDULE.menu + 0.05, 60);
     expect(changes.map((change) => change.phase)).toEqual([...INTRO_PHASES]);
-    expect(REDUCED_MOTION_SCHEDULE.menu).toBeLessThan(5);
+    expect(REDUCED_MOTION_SCHEDULE.menu).toBeLessThan(10);
   });
 
   it('rejects schedules that run backwards', () => {
     expect(
-      () => new IntroTimeline({ cosmos: 2, ship: 1, title: 3, menu: 4 }, () => undefined),
+      () =>
+        new IntroTimeline(
+          { studio: 1, title: 3, battle: 2, hero: 4, departure: 5, menu: 6 },
+          () => undefined,
+        ),
     ).toThrow();
   });
 });

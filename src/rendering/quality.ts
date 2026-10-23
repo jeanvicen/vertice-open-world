@@ -24,6 +24,10 @@ export interface RenderProfile {
   readonly surfaceOctaves: number;
   /** Fraction (0–1) of the procedural ship's surface details that are drawn. */
   readonly detailDensity: number;
+  /** HDR bloom post-processing (lasers, explosions, drives, the star). */
+  readonly bloom: boolean;
+  /** Multisampling of the post-processing target when bloom is on. */
+  readonly msaaSamples: number;
 }
 
 export const QUALITY_PRESETS: Readonly<Record<QualityTier, RenderProfile>> = {
@@ -38,6 +42,8 @@ export const QUALITY_PRESETS: Readonly<Record<QualityTier, RenderProfile>> = {
     skyOctaves: 2,
     surfaceOctaves: 3,
     detailDensity: 0.45,
+    bloom: false,
+    msaaSamples: 0,
   },
   medium: {
     tier: 'medium',
@@ -50,6 +56,8 @@ export const QUALITY_PRESETS: Readonly<Record<QualityTier, RenderProfile>> = {
     skyOctaves: 4,
     surfaceOctaves: 4,
     detailDensity: 0.8,
+    bloom: true,
+    msaaSamples: 2,
   },
   high: {
     tier: 'high',
@@ -62,6 +70,8 @@ export const QUALITY_PRESETS: Readonly<Record<QualityTier, RenderProfile>> = {
     skyOctaves: 5,
     surfaceOctaves: 6,
     detailDensity: 1,
+    bloom: true,
+    msaaSamples: 4,
   },
 };
 

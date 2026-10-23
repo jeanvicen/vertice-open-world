@@ -12,6 +12,7 @@ const body = /<body>([\s\S]*)<\/body>/.exec(markup)?.[1]?.replace(/<script[\s\S]
 let now = 0;
 let ui: ExperienceUI;
 let options: ExperienceUIOptions & {
+  onBegin: ReturnType<typeof vi.fn>;
   onSkip: ReturnType<typeof vi.fn>;
   onSettingsChange: ReturnType<typeof vi.fn>;
 };
@@ -20,6 +21,7 @@ function mount(overrides: Partial<ExperienceUIOptions> = {}): void {
   document.body.innerHTML = body ?? '';
   options = {
     reducedMotion: false,
+    onBegin: vi.fn(),
     onSkip: vi.fn(),
     onSettingsChange: vi.fn(),
     onUserGesture: vi.fn(),
@@ -38,7 +40,7 @@ function mount(overrides: Partial<ExperienceUIOptions> = {}): void {
 }
 
 function showMenu(): void {
-  ui.handlePhase({ phase: 'title', skipped: false });
+  ui.handlePhase({ phase: 'departure', skipped: false });
   ui.handlePhase({ phase: 'menu', skipped: false });
   now += 1000;
 }
@@ -69,13 +71,42 @@ describe('main menu', () => {
     expect(visible('#title-block')).toBe(false);
   });
 
-  it('reveals the title, then the menu, and hides the skip control', () => {
+  it('has no visible skip control', () => {
+    expect(document.querySelector('#skip-intro')).toBeNull();
+    expect(
+      [...document.querySelectorAll('button')].some((b) => /skip/i.test(b.textContent ?? '')),
+    ).toBe(false);
+  });
+
+  it('waits on the start screen and begins the film exactly once', () => {
+    expect(visible('#start-gate')).toBe(true);
+    document.querySelector<HTMLButtonElement>('#start-gate')!.click();
+    document.querySelector<HTMLButtonElement>('#start-gate')!.click();
+    expect(options.onBegin).toHaveBeenCalledOnce();
+    expect(visible('#start-gate')).toBe(false);
+  });
+
+  it('shows "Klipza Studio apresenta", then the title card, then clears both for the battle', () => {
+    ui.handlePhase({ phase: 'studio', skipped: false });
+    expect(visible('#studio-card')).toBe(true);
+    expect(document.querySelector('#studio-card')!.textContent!.replace(/\s+/g, ' ').trim()).toBe(
+      'Klipza Studio apresenta',
+    );
     ui.handlePhase({ phase: 'title', skipped: false });
-    expect(visible('#title-block')).toBe(true);
+    expect(visible('#studio-card')).toBe(false);
+    expect(visible('#title-card')).toBe(true);
+    expect(document.querySelector('#title-card')!.textContent!.trim()).toBe('VÉRTICE');
+    ui.handlePhase({ phase: 'battle', skipped: false });
+    expect(visible('#title-card')).toBe(false);
     expect(visible('#main-menu')).toBe(false);
+  });
+
+  it('reveals the title and the menu only at the end of the film', () => {
+    ui.handlePhase({ phase: 'departure', skipped: false });
+    expect(visible('#title-block')).toBe(false);
     ui.handlePhase({ phase: 'menu', skipped: false });
+    expect(visible('#title-block')).toBe(true);
     expect(visible('#main-menu')).toBe(true);
-    expect(visible('#skip-intro')).toBe(false);
     expect(ui.view).toBe('main');
   });
 
@@ -107,14 +138,17 @@ describe('main menu', () => {
     expect(onPlay).toHaveBeenCalledOnce();
   });
 
-  it('ignores a tap on the menu in the same gesture that skipped the opening', () => {
+  it('ignores a tap on the menu the instant it appears', () => {
     ui.handlePhase({ phase: 'menu', skipped: true });
     now += 100;
     button('settings').click();
     expect(ui.view).toBe('main');
   });
 
-  it('skips the opening on Escape, but not once the menu is up', () => {
+  it('starts on any key, then lets Escape skip the film, but not once the menu is up', () => {
+    window.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape' }));
+    expect(options.onBegin).toHaveBeenCalledOnce();
+    expect(options.onSkip).not.toHaveBeenCalled();
     window.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape' }));
     expect(options.onSkip).toHaveBeenCalledOnce();
     showMenu();

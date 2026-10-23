@@ -4,71 +4,94 @@ import {
   HemisphereLight,
   PerspectiveCamera,
   Scene as ThreeScene,
+  Vector3,
   type WebGLRenderer,
 } from 'three';
+import type { EffectName, SceneAudio } from '../../audio/AudioEngine';
+import { CueScheduler } from '../../audio/CueScheduler';
+import { createScore, type ScoreCue } from '../../audio/score';
+import { PostProcessing } from '../../rendering/PostProcessing';
 import type { QualityManager } from '../../rendering/QualityManager';
 import type { RenderProfile } from '../../rendering/quality';
 import { ResourceTracker } from '../../rendering/ResourceTracker';
 import type { MotionPreferenceWatcher } from '../../systems/MotionPreference';
 import type { Scene } from '../Scene';
+import { Battle } from './battle/Battle';
+import { Choreography, type SoundCue } from './battle/Choreography';
 import { CinematicCamera } from './CinematicCamera';
-import { Cosmos, type CosmosReveal } from './Cosmos';
+import { Cosmos } from './Cosmos';
 import {
   CINEMATIC_SCHEDULE,
+  type IntroSchedule,
   IntroTimeline,
   type PhaseChange,
   REDUCED_MOTION_SCHEDULE,
 } from './IntroTimeline';
 import { PLANET_CENTER, SUN_DIRECTION } from './layout';
-import { damp, smoothstep } from './random';
+import { damp } from './random';
+import { createPanelTextures } from './ship/panelTexture';
 import { ProceduralShip } from './ship/ProceduralShip';
 import type { ShipModel } from './ship/ShipModel';
-import { createShipState, ShipFlight } from './ShipFlight';
+import { createShipState, ShipFlight, WARP_SECONDS } from './ShipFlight';
 import { createEnvironmentTexture, createGlowTexture } from './textures';
 
 export interface SpaceIntroOptions {
   readonly quality: QualityManager;
   readonly motion: MotionPreferenceWatcher;
   readonly onPhase: (change: PhaseChange) => void;
+  readonly audio?: SceneAudio;
 }
 
 const EXPOSURE = 1.05;
+const AUDIO_LOOKAHEAD = 0.06;
+/** Frames rendered in full while the start screen is up, so GPU uploads happen off-screen. */
+const WARM_UP_FRAMES = 3;
 
 /**
- * The opening and the living backdrop of the title menu. Every visual is sampled from the
- * timeline clock, so the sequence looks the same at 20 or 120 frames per second.
+ * The film and the living backdrop of the title menu. Every visual and every sound is sampled
+ * from one timeline clock, so the sequence plays the same at 20 or 120 frames per second.
  */
 export class SpaceIntroScene implements Scene {
   public readonly threeScene = new ThreeScene();
   public readonly camera = new PerspectiveCamera(40, 16 / 9, 0.5, 12000);
   private readonly resources = new ResourceTracker();
   private readonly timeline: IntroTimeline;
+  private readonly schedule: IntroSchedule;
+  private readonly cinematicFilm: boolean;
   private readonly cinematic: CinematicCamera;
   private readonly cosmos: Cosmos;
   private readonly ship: ShipModel;
-  private readonly flight = new ShipFlight();
+  private readonly flight: ShipFlight;
+  private readonly battle: Battle | undefined;
+  private readonly post: PostProcessing;
   private readonly shipState = createShipState();
-  private readonly sunLight = new DirectionalLight(new Color('#ffe9d2'), 3.4);
+  private readonly sunLight = new DirectionalLight(new Color('#ffe9d2'), 2.7);
   private readonly bounceLight = new DirectionalLight(new Color('#6f8bb8'), 0.55);
   private readonly unsubscribers: Array<() => void> = [];
-  private readonly shipHoldsStation: boolean;
+  private readonly effects: CueScheduler<SoundCue> | undefined;
+  private readonly score: CueScheduler<ScoreCue>;
+  private readonly audio: SceneAudio | undefined;
+  private readonly scratch = new Vector3();
   private reducedMotion: boolean;
-  /** Ambient clock: keeps running smoothly even when the timeline jumps on skip. */
+  private begun = false;
   private ambientTime = 0;
   private fade = 0;
-  private fadeRate = 0.9;
+  private fadeRate = 0.75;
+  private warmFrames = 0;
   private compiled = false;
   private exited = false;
 
   public constructor(options: SpaceIntroOptions) {
     const profile = options.quality.profile;
+    this.audio = options.audio;
     this.reducedMotion = options.motion.reduced;
-    this.shipHoldsStation = this.reducedMotion;
-    this.timeline = new IntroTimeline(
-      this.reducedMotion ? REDUCED_MOTION_SCHEDULE : CINEMATIC_SCHEDULE,
-      (change) => options.onPhase(change),
-    );
+    this.cinematicFilm = !this.reducedMotion;
+    this.schedule = this.cinematicFilm ? CINEMATIC_SCHEDULE : REDUCED_MOTION_SCHEDULE;
+    this.timeline = new IntroTimeline(this.schedule, (change) => options.onPhase(change));
     this.cinematic = new CinematicCamera(this.camera);
+    this.flight = new ShipFlight(
+      CINEMATIC_SCHEDULE.departure - CINEMATIC_SCHEDULE.hero - WARP_SECONDS,
+    );
 
     const glow = this.resources.track(createGlowTexture());
     const environment = this.resources.track(createEnvironmentTexture());
@@ -76,6 +99,17 @@ export class SpaceIntroScene implements Scene {
     this.ship = new ProceduralShip(environment, glow);
     this.ship.root.visible = false;
     this.threeScene.add(this.cosmos.root, this.ship.root);
+
+    if (this.cinematicFilm) {
+      const script = new Choreography(this.schedule, this.flight);
+      const panels = createPanelTextures(512, 256);
+      this.resources.track(panels.color);
+      this.resources.track(panels.roughness);
+      this.battle = new Battle(script, panels.color, environment, profile);
+      this.threeScene.add(this.battle.root);
+      this.effects = new CueScheduler(script.cues);
+    }
+    this.score = new CueScheduler(createScore(this.schedule, this.cinematicFilm));
 
     this.sunLight.target = this.ship.root;
     this.sunLight.shadow.camera.left = -24;
@@ -93,6 +127,7 @@ export class SpaceIntroScene implements Scene {
       new HemisphereLight(new Color('#0d1424'), new Color('#020203'), 0.35),
     );
 
+    this.post = new PostProcessing(this.threeScene, this.camera);
     this.applyProfile(profile);
     this.unsubscribers.push(
       options.quality.subscribe((next) => this.applyProfile(next)),
@@ -104,6 +139,12 @@ export class SpaceIntroScene implements Scene {
 
   public enter(): void {
     this.exited = false;
+  }
+
+  /** Starts the film (called from the start screen's user gesture). Later calls are ignored. */
+  public begin(): void {
+    if (this.begun) return;
+    this.begun = true;
     this.timeline.start();
   }
 
@@ -117,59 +158,81 @@ export class SpaceIntroScene implements Scene {
     if (!this.timeline.skip()) return false;
     if (fadeBeforeSkip > 0.05) this.fade = 0;
     this.fadeRate = 2.4;
+    this.effects?.skipTo(Number.POSITIVE_INFINITY);
+    this.score.skipTo(Number.POSITIVE_INFINITY);
+    this.audio?.stopIntro();
     return true;
   }
 
   public resize(width: number, height: number): void {
     this.cinematic.setAspect(width / Math.max(1, height));
+    this.post.setSize(width, height);
   }
 
   public update(deltaSeconds: number): void {
     if (this.exited) return;
-    this.timeline.advance(deltaSeconds);
     this.ambientTime += deltaSeconds;
+    if (this.begun) this.timeline.advance(deltaSeconds);
     const t = this.timeline.elapsed;
-    const schedule = this.timeline.schedule;
+    const schedule = this.schedule;
     const skipped = this.timeline.skipped;
 
-    const exposureTarget = t >= schedule.cosmos ? 1 : 0;
+    // Black under the title cards; the battle fades up like a first shot.
+    const exposureTarget = this.begun && t >= schedule.battle - 0.2 ? 1 : 0;
     this.fade = damp(this.fade, exposureTarget, this.fadeRate, deltaSeconds);
 
-    const shipEntry = schedule.ship;
-    if (this.shipHoldsStation) {
+    if (!this.cinematicFilm) {
       this.flight.sampleStation(this.ambientTime, this.shipState);
     } else if (skipped) {
       this.shipState.visible = false;
     } else {
-      this.flight.sample(t - shipEntry, this.ambientTime, this.shipState);
+      this.flight.sample(t - schedule.hero, t, this.shipState);
     }
     this.applyShip();
 
-    const followWeight =
-      this.shipState.visible && !this.shipHoldsStation && !skipped
-        ? smoothstep(shipEntry + 2.3, shipEntry + 3.4, t) *
-          (1 - smoothstep(shipEntry + 4.4, shipEntry + 7.8, t)) *
-          0.3
-        : 0;
+    const battleVisible =
+      this.battle !== undefined &&
+      !skipped &&
+      (this.warmFrames < WARM_UP_FRAMES ||
+        (t >= schedule.battle - 0.5 && t < schedule.departure + 8));
+    this.battle?.update(t, battleVisible);
+
     this.cinematic.update(t, this.reducedMotion, {
-      target: this.shipState.visible ? this.shipState.position : undefined,
-      weight: followWeight,
+      schedule,
+      cinematic: this.cinematicFilm,
+      skipped,
+      sampleHero: (time, out) => this.flight.sample(time - schedule.hero, time, out),
+      shake: this.reducedMotion || !this.battle ? 0 : this.battle.shakeAt(t, this.camera.position),
+    });
+    this.camera.updateMatrixWorld();
+    this.cosmos.update(this.ambientTime, this.camera.position, {
+      sky: 1,
+      stars: 1.4,
+      bodies: 1,
+      dust: 1,
     });
 
-    this.cosmos.update(this.ambientTime, this.camera.position, this.revealAt(t, skipped));
+    if (this.begun) this.updateAudio(t, skipped);
   }
 
   public render(renderer: WebGLRenderer): void {
     if (this.exited) return;
     this.cosmos.setPixelRatio(renderer.getPixelRatio());
+    this.battle?.setViewport(this.camera, renderer.domElement.height);
     if (!this.compiled) {
-      // Compile every program while the screen is still black, not mid-reveal.
+      // Compile every program while the screen is still black.
       renderer.compile(this.threeScene, this.camera);
       this.compiled = true;
     }
+    if (this.warmFrames >= WARM_UP_FRAMES && this.fade < 0.002) {
+      renderer.setClearColor(0x000000, 1);
+      renderer.clear();
+      return;
+    }
+    this.warmFrames += 1;
     const previousExposure = renderer.toneMappingExposure;
     renderer.toneMappingExposure = EXPOSURE * this.fade;
-    renderer.render(this.threeScene, this.camera);
+    this.post.render(renderer);
     renderer.toneMappingExposure = previousExposure;
   }
 
@@ -178,24 +241,52 @@ export class SpaceIntroScene implements Scene {
     this.exited = true;
     for (const unsubscribe of this.unsubscribers) unsubscribe();
     this.unsubscribers.length = 0;
+    this.audio?.setEngine(0, 0);
     this.ship.dispose();
+    this.battle?.dispose();
+    this.post.dispose();
     this.sunLight.shadow.dispose();
     this.threeScene.clear();
     this.resources.dispose();
   }
 
-  private revealAt(t: number, skipped: boolean): CosmosReveal {
-    if (skipped) return { sky: 1, stars: 1.4, bodies: 1, dust: 1 };
-    const start = this.timeline.schedule.cosmos;
-    // Reduced motion compresses the staggered reveal into a short dissolve.
-    const pace = this.timeline.schedule === REDUCED_MOTION_SCHEDULE ? 0.35 : 1;
-    const since = (t - start) / pace;
-    return {
-      stars: Math.max(0, Math.min(1.4, (since / 3.4) * 1.4)),
-      sky: smoothstep(0.8, 5.2, since),
-      bodies: smoothstep(1.4, 6.2, since),
-      dust: smoothstep(2.2, 6.4, since),
-    };
+  private updateAudio(t: number, skipped: boolean): void {
+    const audio = this.audio;
+    if (!audio) return;
+    this.score.update(t, AUDIO_LOOKAHEAD, (cue, delay) => audio.playScore(cue, delay));
+    this.effects?.update(t, AUDIO_LOOKAHEAD, (cue, delay) => {
+      const placement = this.placeSound(cue.position);
+      audio.playEffect(cue.name as EffectName, {
+        delay,
+        pan: placement.pan,
+        gain: cue.weight * placement.gain,
+        distance: placement.distance,
+        seed: (cue.time * 7.31) % 1,
+      });
+    });
+    if (this.shipState.visible && !skipped && this.cinematicFilm) {
+      const placement = this.placeSound(this.shipState.position);
+      audio.setEngine(
+        this.shipState.engine * this.shipState.engineFade * placement.gain,
+        placement.pan,
+      );
+    } else {
+      audio.setEngine(0, 0);
+    }
+  }
+
+  /** Stereo position and distance attenuation of a world point as heard from the camera. */
+  private placeSound(position: Vector3 | undefined): {
+    pan: number;
+    gain: number;
+    distance: number;
+  } {
+    if (!position) return { pan: 0, gain: 1, distance: 0 };
+    const local = this.scratch.copy(position).applyMatrix4(this.camera.matrixWorldInverse);
+    const distance = local.length();
+    const pan = Math.max(-1, Math.min(1, (local.x / Math.max(25, distance)) * 1.6));
+    const gain = Math.max(0.06, Math.min(1.2, 90 / (distance + 40)));
+    return { pan, gain, distance };
   }
 
   private applyShip(): void {
@@ -215,6 +306,8 @@ export class SpaceIntroScene implements Scene {
 
   private applyProfile(profile: RenderProfile): void {
     this.cosmos.applyProfile(profile);
+    this.battle?.applyProfile(profile);
+    this.post.setProfile(profile);
     this.ship.setDetailDensity(profile.detailDensity);
     this.ship.setShadows(profile.shadows);
     this.sunLight.castShadow = profile.shadows;

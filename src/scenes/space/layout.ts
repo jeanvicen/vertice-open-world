@@ -36,3 +36,25 @@ export const PLANET_LIGHT_DIRECTION = SUN_POSITION.clone()
 
 export const SUN_COLOR = new Vector3(1.0, 0.9, 0.78);
 export const ATMOSPHERE_COLOR = new Vector3(0.36, 0.55, 0.92);
+
+/** A ringed gas giant high in the sky, above and beyond the star. */
+export const GIANT_CENTER = new Vector3(0.06, 0.25, -0.966).normalize().multiplyScalar(4300);
+export const GIANT_RADIUS = 380;
+export const RING_INNER = GIANT_RADIUS * 1.35;
+export const RING_OUTER = GIANT_RADIUS * 2.35;
+
+/** A small, dusty red world low on the left. */
+export const RED_PLANET_CENTER = new Vector3(-0.42, -0.2, -0.88).normalize().multiplyScalar(4600);
+export const RED_PLANET_RADIUS = 120;
+
+/**
+ * Light direction for a body: towards the star, turned slightly towards the camera (the same
+ * authored cheat as the main planet) so each body shows a readable crescent.
+ */
+export function lightDirectionFor(center: Vector3): Vector3 {
+  return SUN_POSITION.clone()
+    .sub(center)
+    .normalize()
+    .add(new Vector3(0, 0, 0.3))
+    .normalize();
+}

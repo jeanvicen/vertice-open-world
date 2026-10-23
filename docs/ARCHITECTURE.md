@@ -2,7 +2,7 @@
 
 ## Milestone boundary
 
-This milestone is the opening experience: the cinematic introduction, the title, the main menu, settings and credits. Gameplay is future work; PLAY is disabled until a playable scene exists.
+This milestone is the opening experience: the cinematic film (battle included), structured sound, the title, the main menu, settings and credits. Gameplay is future work; PLAY is disabled until a playable scene exists.
 
 ## Ownership and flow
 
@@ -23,11 +23,15 @@ App ── Game ── GameLoop (single requestAnimationFrame loop)
 
 ## The opening (`src/scenes/space`)
 
-- `IntroTimeline` is a pure clock with explicit phases `void → cosmos → ship → title → menu`. It announces each phase exactly once and in order, whatever the frame rate, frame gaps or repeated skip requests. Reduced motion uses a short schedule without the ship passage or camera travel.
-- Every visual is **sampled from timeline time**, not integrated per frame: the ship's distance (`ShipFlight`: steady cruise, then constant-thrust burn along an arc-length-parameterised Catmull–Rom path), the camera pose (`CinematicCamera`: slow approach, a slight lean towards the overtaking ship, then a near-still drift) and the staggered reveal of each cosmic layer. The opening therefore looks the same at 20 or 120 fps.
-- `Cosmos` holds the sky (nebula computed per vertex on a dense sphere, plus fine per-pixel grain), stars (sorted brightest first so lower tiers keep the strongest via draw range), wrap-around dust, the planet (banded shader with soft terminator and limb haze; the night side skips the noise), the atmosphere shell (ray closest-approach glow) and the moon. Custom shaders include Three's tone-mapping, colour-space and dithering chunks so they obey exposure and avoid banding.
-- `ProceduralShip` implements the `ShipModel` interface. A licensed GLB can replace it by implementing the same interface; the timeline and flight path need no changes.
-- A skip cuts through a short exposure dip to the final composition.
+- `IntroTimeline` is a pure clock with explicit phases `void → studio → title → battle → hero → departure → menu`, announced exactly once and in order whatever the frame rate, frame gaps or skips. It starts only when the start screen is activated. Reduced motion uses a short schedule: the two cards, then a still dissolve to the menu.
+- `battle/Choreography` is the whole fight as data, built once: fighters on looping dogfight orbits, every bolt with its fire and impact time (killing shots are solved so they land exactly on their target), explosions and sound cues. Frames only sample it, and it is unit-tested.
+- `ShipFlight` is the protagonist: a warp drop onto the battlefield, a run through the fight and a constant-thrust departure towards the planet. `CinematicCamera` turns time into shots: an establishing push, a cut on the warp, a lagged chase that keeps the horizon level, and a long ease back to the menu framing; explosions add a small, distance-attenuated shake.
+- `battle/Battle` renders fighters (instanced), engine glows and sparks (one point batch), bolts (instanced ribbons), fireballs/smoke and flashes/shockwaves (instanced procedural billboards), debris (instanced) and one explosion light. `Cosmos` holds the sky, stars, dust, the Earth-like planet with atmosphere, the ringed giant, the red planet, the moon and the star. `PostProcessing` adds HDR bloom (half-float target, threshold above normal surfaces, OutputPass for tone mapping) on Medium/High.
+- `ProceduralShip` implements `ShipModel`; a licensed GLB can replace it without touching the timeline.
+
+## Audio (`src/audio`)
+
+`AudioEngine` builds the graph after the start gesture: music, effects, ambience and interface buses → master gain → compressor, plus a convolution reverb with a generated impulse response. `synth.ts` holds every recipe (no files). `score.ts` turns the schedule into timed musical cues; the scene feeds both the score and the choreography's effect cues through `CueScheduler`, which schedules each sound once, slightly ahead, at its exact time, with pan and distance taken from the camera.
 
 ## Interface (`src/ui`)
 

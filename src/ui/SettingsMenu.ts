@@ -5,6 +5,7 @@ import {
   type QualityPreference,
   type UserSettings,
 } from '../app/config';
+import { installState, onInstallChange, promptInstall } from '../app/install';
 import type { QualityTier } from '../rendering/quality';
 
 /** Read-only facts the panel reports next to the controls. */
@@ -58,6 +59,10 @@ export class SettingsMenu {
   private readonly motionNote: HTMLElement;
   private readonly fullscreenRow: HTMLElement;
   private readonly fullscreenButton: HTMLButtonElement;
+  private readonly installRow: HTMLElement;
+  private readonly installButton: HTMLButtonElement;
+  private readonly installNote: HTMLElement;
+  private readonly stopInstallWatch: () => void;
 
   public constructor(
     private readonly root: HTMLElement,
@@ -74,6 +79,9 @@ export class SettingsMenu {
     this.motionNote = query(root, '#motion-note');
     this.fullscreenRow = query(root, '#fullscreen-setting');
     this.fullscreenButton = query(root, '#fullscreen-toggle');
+    this.installRow = query(root, '#install-setting');
+    this.installButton = query(root, '#install-button');
+    this.installNote = query(root, '#install-note');
     if (this.qualityInputs.length !== 4 || this.motionInputs.length !== 3)
       throw new Error('Settings radio groups are incomplete.');
 
@@ -88,6 +96,9 @@ export class SettingsMenu {
     this.fullscreenButton.addEventListener('click', this.handleFullscreen);
     document.addEventListener('fullscreenchange', this.syncFullscreen);
     this.syncFullscreen();
+    this.installButton.addEventListener('click', this.handleInstall);
+    this.stopInstallWatch = onInstallChange(this.syncInstall);
+    this.syncInstall();
   }
 
   public sync(status: SettingsStatus): void {
@@ -142,6 +153,8 @@ export class SettingsMenu {
     this.volume.removeEventListener('input', this.handleVolume);
     this.fullscreenButton.removeEventListener('click', this.handleFullscreen);
     document.removeEventListener('fullscreenchange', this.syncFullscreen);
+    this.installButton.removeEventListener('click', this.handleInstall);
+    this.stopInstallWatch();
   }
 
   private readonly handleQuality = (event: Event): void => {
@@ -170,6 +183,27 @@ export class SettingsMenu {
         .requestFullscreen({ navigationUI: 'hide' })
         .catch((error: unknown) => console.warn('[VÉRTICE] Fullscreen was refused.', error));
     }
+  };
+
+  private readonly handleInstall = (): void => {
+    void promptInstall().catch((error: unknown) =>
+      console.warn('[VÉRTICE] The install dialog could not open.', error),
+    );
+  };
+
+  /** Install row: a real install button where the browser offers one, guidance elsewhere. */
+  private readonly syncInstall = (): void => {
+    const state = installState();
+    this.installRow.hidden = state === 'unavailable';
+    this.installButton.hidden = state !== 'available';
+    this.installNote.textContent =
+      state === 'installed'
+        ? 'VÉRTICE is installed and opens fullscreen from your home screen.'
+        : state === 'ios'
+          ? 'On iPhone or iPad: Share, then Add to Home Screen.'
+          : state === 'available'
+            ? 'Adds VÉRTICE to your home screen as a fullscreen app that also works offline.'
+            : '';
   };
 
   private readonly syncFullscreen = (): void => {
