@@ -1,6 +1,5 @@
 import { ACESFilmicToneMapping, PCFSoftShadowMap, SRGBColorSpace, WebGLRenderer } from 'three';
-import type { UserSettings } from '../app/config';
-import { getEffectivePixelRatio, QUALITY_PRESETS } from './quality';
+import { getEffectivePixelRatio, type RenderProfile } from './quality';
 
 export class Renderer {
   public readonly instance: WebGLRenderer;
@@ -11,12 +10,13 @@ export class Renderer {
 
   public constructor(
     private readonly canvas: HTMLCanvasElement,
-    private settings: UserSettings,
+    private profile: RenderProfile,
+    private resolutionScale: number,
   ) {
     try {
       this.instance = new WebGLRenderer({
         canvas,
-        antialias: settings.quality !== 'low',
+        antialias: profile.antialias,
         alpha: false,
         powerPreference: 'high-performance',
         failIfMajorPerformanceCaveat: false,
@@ -28,9 +28,9 @@ export class Renderer {
     this.instance.outputColorSpace = SRGBColorSpace;
     this.instance.toneMapping = ACESFilmicToneMapping;
     this.instance.toneMappingExposure = 1;
-    this.instance.shadowMap.enabled = QUALITY_PRESETS[settings.quality].shadows;
+    this.instance.shadowMap.enabled = profile.shadows;
     this.instance.shadowMap.type = PCFSoftShadowMap;
-    this.instance.setPixelRatio(getEffectivePixelRatio(window.devicePixelRatio, settings));
+    this.instance.setPixelRatio(this.pixelRatio());
     this.resizeObserver = new ResizeObserver(this.handleResize);
     this.resizeObserver.observe(canvas.parentElement ?? canvas);
     window.addEventListener('resize', this.handleResize);
@@ -45,10 +45,11 @@ export class Renderer {
     this.resizeRenderer();
   }
 
-  public applySettings(settings: UserSettings): void {
-    this.settings = settings;
-    this.instance.shadowMap.enabled = QUALITY_PRESETS[settings.quality].shadows;
-    this.instance.setPixelRatio(getEffectivePixelRatio(window.devicePixelRatio, settings));
+  /** Antialiasing is fixed for the context's lifetime; every other profile value applies live. */
+  public applySettings(profile: RenderProfile, resolutionScale: number): void {
+    this.profile = profile;
+    this.resolutionScale = resolutionScale;
+    this.instance.shadowMap.enabled = profile.shadows;
     this.resize();
   }
 
@@ -71,9 +72,13 @@ export class Renderer {
     const target = this.canvas.parentElement ?? this.canvas;
     const width = Math.max(1, target.clientWidth);
     const height = Math.max(1, target.clientHeight);
-    this.instance.setPixelRatio(getEffectivePixelRatio(window.devicePixelRatio, this.settings));
+    this.instance.setPixelRatio(this.pixelRatio());
     this.instance.setSize(width, height, false);
     this.onResize?.(width, height);
+  }
+
+  private pixelRatio(): number {
+    return getEffectivePixelRatio(window.devicePixelRatio, this.profile, this.resolutionScale);
   }
 
   private readonly handleContextLost = (event: Event): void => {

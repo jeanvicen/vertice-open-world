@@ -1,9 +1,5 @@
 # Development
 
-## Requirements
-
-Install Node.js 22 LTS (or another supported Node release at least `20.19`) with npm. Use a current desktop browser for local inspection, or open this GitHub repository in a browser-based Codespace/cloud IDE. The game renders on the device's own browser GPU; GPU rendering in the development environment is not required.
-
 ## Install and run
 
 ```sh
@@ -11,7 +7,7 @@ npm ci
 npm run dev
 ```
 
-Open the local Vite URL shown in the terminal. In a Codespace, open or forward the Vite server port (5173). To preview the production output use `npm run build` followed by `npm run preview`.
+Open the Vite URL. To test from a phone on the same network, open `http://<computer-ip>:5173`. In a Codespace, forward port 5173. Production preview: `npm run build && npm run preview`.
 
 ## Quality checks
 
@@ -23,22 +19,29 @@ npm run build
 npm run format:check
 ```
 
-`npm run build` includes a TypeScript no-emit check. Vitest covers deterministic frame timing and graphics-preference bounds; it does not replace a browser/GPU integration test. The build produces static files in `dist/`.
+Vitest covers the intro timeline (order, exactly-once, frame-rate independence, skip), the ship's flight profile, the menu state machine, quality heuristics and adaptive step-down, settings validation, persistence and migration, and the HTML interface in happy-dom (PLAY disabled, settings patches, exact credits, immediate exit). It does not replace a real-device GPU pass.
 
-## GitHub Pages
+## Deploying
 
-GitHub Actions deploys `main` on push. In the repository's **Settings → Pages**, set the source to **GitHub Actions**. The Pages workflow installs the lockfile, typechecks, lints, runs Vitest, and builds with `GITHUB_PAGES=true`, which sets Vite's base to `/vertice-open-world/`. Then its deploy job publishes the artifact. A manually triggered Pages workflow is available under **Actions → Build and deploy to GitHub Pages → Run workflow**.
+**Vercel**: import the GitHub repository in Vercel. `vercel.json` already declares the Vite framework, `npm ci`, `npm run build` and the `dist` output, so the defaults need no changes. Every push to a connected branch creates a preview deployment.
 
-For a local repository-subpath simulation, use `GITHUB_PAGES=true npm run build`; run the preview with `npm run preview`. Keep static assets relative to Vite's configured base; the included asset loader resolves files from `import.meta.env.BASE_URL`, not from `/assets/...`.
+**GitHub Pages**: push to `main`, with **Settings → Pages → Source** set to **GitHub Actions**. To simulate the subpath locally: `GITHUB_PAGES=true npm run build && npm run preview`, then open `/vertice-open-world/`. All runtime paths (assets, manifest, service worker) are relative to Vite's base.
 
-## Creating a real asset
+The service worker is only registered in production builds. After a deploy, the page (HTML) is network-first and picks up the new version on the next visit; fingerprinted files under `/static/` are cached forever. If you change `public/sw.js`, bump its `CACHE` name.
 
-Place original or properly licensed files in `public/assets/models`, `textures`, `audio` or `fonts`, document their provenance/license, then add an ID and safe relative path to `ASSET_MANIFEST`. `AssetLoader` currently loads GLB/glTF models, textures and audio buffers. Font loading is intentionally rejected until a font parser is implemented. Assign each loaded GPU asset a clear scene owner and dispose it when that owner exits.
+## Android test procedure
 
-## Input and device checks
+1. Open the published URL in Chrome for Android. The screen must stay black, then reveal stars, the planet, the ship and the title.
+2. Tap once during the opening: it should cut to the menu, and that same tap must not open a panel.
+3. Check that PLAY is dimmed and labelled _In development_ and does nothing when tapped.
+4. Open **Settings**: switch Low/Medium/High (the note under the control changes, and the image gets sharper or softer), move Render scale to 50 % (visibly softer), move the volume (the ambient sound changes after your first tap). Reload: your choices persist.
+5. Open **Credits**: the roll starts low on the screen; **Back** works immediately.
+6. Rotate the phone during the opening and in the menu: the layout switches between portrait (centred title, menu at the bottom) and landscape (side menu) without restarting.
+7. Chrome menu → **Add to Home screen / Install app**, then open from the home screen: it runs fullscreen. Turn on airplane mode and open it again: it should still start (offline cache).
+8. With **Settings → Reduced cinematic motion → On**, reload: short dissolves, a still camera, a static credits list.
 
-Look with a primary-pointer drag; move with WASD/arrow keys; on touch screens drag the view and use the on-screen directional pad. Test device orientation changes and background/foreground transitions on target browsers. Use the quality selector and render-scale slider to reduce GPU load. CSS observes browser safe-area insets and `prefers-reduced-motion`.
+If the opening stutters on a given phone, Automatic steps down by itself after a few seconds of slow frames. Low plus a 60–70 % render scale is the safe manual setting.
 
-## CI
+## Assets
 
-The `Validate` workflow runs on pull requests and pushes to `main`. The separate Pages workflow repeats all quality gates before publishing. The checked-in npm lockfile, Node LTS version, static `dist` artifact and Pages subpath base are the reproducibility and release contract.
+Place only original or properly licensed files in `public/assets/…`, document their source and license, and register them in `ASSET_MANIFEST`. To replace the procedural ship, implement `ShipModel` (`src/scenes/space/ship/ShipModel.ts`) around a loaded GLB.
