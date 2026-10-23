@@ -57,7 +57,7 @@ export function createEnvironmentTexture(width = 256, height = 128): DataTexture
         Math.cos(theta) * Math.sin(phi),
       );
       const sunDot = Math.max(0, direction.dot(SUN_DIRECTION));
-      const sun = 60 * sunDot ** 900 + 1.6 * sunDot ** 24 + 0.12 * sunDot ** 3;
+      const sun = 18 * sunDot ** 900 + 1.1 * sunDot ** 24 + 0.1 * sunDot ** 3;
       const planetAngle = Math.acos(Math.min(1, Math.max(-1, direction.dot(planetDirection))));
       const onPlanet = planetAngle < planetAngularRadius ? 1 : 0;
       const limb = onPlanet * Math.max(0, 1 - (planetAngularRadius - planetAngle) / 0.08);

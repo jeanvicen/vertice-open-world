@@ -35,6 +35,16 @@
       ></canvas>
       <div class="scene-grade" aria-hidden="true"></div>
 
+      <div class="intro-card studio-card" id="studio-card" data-visible="false" aria-hidden="true">
+        <p class="studio-name">Klipza Studio</p>
+        <p class="studio-presents">apresenta</p>
+      </div>
+      <div class="intro-card title-card" id="title-card" data-visible="false" aria-hidden="true">
+        <p class="title-card-word">VÉRTICE</p>
+        <span class="title-card-rule"></span>
+      </div>
+      <p class="visually-hidden" id="intro-announcer" aria-live="polite"></p>
+
       <header class="title-block" id="title-block" data-visible="false">
         <h1 class="title">
           <span class="visually-hidden">VÉRTICE</span>
@@ -143,6 +153,14 @@
             <p class="setting-note" id="motion-note" aria-live="polite"></p>
           </fieldset>
 
+          <div class="setting" id="install-setting" hidden>
+            <div class="setting-row">
+              <span class="setting-label">App</span>
+              <button class="pill-button" id="install-button" type="button">Install app</button>
+            </div>
+            <p class="setting-note" id="install-note" aria-live="polite"></p>
+          </div>
+
           <div class="setting" id="fullscreen-setting" hidden>
             <div class="setting-row">
               <span class="setting-label">Display</span>
@@ -169,10 +187,6 @@
           <span aria-hidden="true">←</span> Back<span class="visually-hidden"> to main menu</span>
         </button>
       </section>
-
-      <button class="skip-intro" id="skip-intro" type="button" data-visible="false">
-        Skip intro
-      </button>
       <p class="runtime-status" id="runtime-status" role="status" aria-live="polite" hidden></p>
 
       <!-- Controls for the walkable world scene; shown once PLAY leads somewhere. -->
@@ -186,6 +200,12 @@
           </div>
         </nav>
       </div>
+
+      <button class="start-gate" id="start-gate" type="button" data-visible="true">
+        <span class="start-gate-mark" aria-hidden="true"></span>
+        <span class="start-gate-label" id="start-gate-label">Toque para começar</span>
+        <span class="start-gate-hint">Melhor com som</span>
+      </button>
 
       <section id="fatal-error" class="fatal-error" role="alert" hidden>
         <h2>VÉRTICE could not start.</h2>

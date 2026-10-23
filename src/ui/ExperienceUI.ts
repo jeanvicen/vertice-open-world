@@ -1,3 +1,4 @@
+import type { InterfaceSound } from '../audio/synth';
 import type { UserSettings } from '../app/config';
 import type { PhaseChange } from '../scenes/space/IntroTimeline';
 import { CreditsScreen } from './CreditsScreen';
@@ -6,7 +7,11 @@ import { SettingsMenu, type SettingsStatus } from './SettingsMenu';
 
 export interface ExperienceUIOptions {
   readonly reducedMotion: boolean;
+  /** Runs inside the start screen's gesture: unlock audio, then start the film. */
+  readonly onBegin: () => void;
+  /** Keyboard-only escape hatch (Escape); there is deliberately no visible skip control. */
   readonly onSkip: () => void;
+  readonly onInterfaceSound?: (kind: InterfaceSound) => void;
   readonly onSettingsChange: (patch: Partial<UserSettings>) => void;
   /** Runs inside user gestures; browsers only start audio from one. */
   readonly onUserGesture: () => void;
@@ -17,7 +22,7 @@ export interface ExperienceUIOptions {
 
 type MenuAction = 'play' | 'settings' | 'credits';
 
-/** Ignore taps that land on the menu in the same gesture that skipped the opening. */
+/** Ignore taps that land on the menu the instant it appears. */
 const MENU_REVEAL_LOCK_MS = 650;
 
 function query<T extends HTMLElement>(selector: string): T {
@@ -42,13 +47,17 @@ export class ExperienceUI {
   private readonly menu = query<HTMLElement>('#main-menu');
   private readonly settingsPanel = query<HTMLElement>('#settings-panel');
   private readonly creditsPanel = query<HTMLElement>('#credits');
-  private readonly skipButton = query<HTMLButtonElement>('#skip-intro');
+  private readonly gate = query<HTMLButtonElement>('#start-gate');
+  private readonly studioCard = query<HTMLElement>('#studio-card');
+  private readonly titleCard = query<HTMLElement>('#title-card');
+  private readonly announcer = query<HTMLElement>('#intro-announcer');
   private readonly status = query<HTMLElement>('#runtime-status');
   private readonly menuButtons: HTMLButtonElement[];
   private readonly settings: SettingsMenu;
   private readonly credits: CreditsScreen;
   private returnFocus: HTMLElement | undefined;
   private reducedMotion: boolean;
+  private begun = false;
 
   public constructor(private readonly options: ExperienceUIOptions) {
     this.reducedMotion = options.reducedMotion;
@@ -69,16 +78,24 @@ export class ExperienceUI {
     setVisible(this.menu, false);
     setVisible(this.settingsPanel, false);
     setVisible(this.creditsPanel, false);
-    setVisible(this.skipButton, true);
+    setVisible(this.studioCard, false);
+    setVisible(this.titleCard, false);
+    setVisible(this.gate, true);
+    query<HTMLElement>('#start-gate-label').textContent = window.matchMedia?.('(pointer: coarse)')
+      .matches
+      ? 'Toque para começar'
+      : 'Clique para começar';
     this.setReducedMotion(options.reducedMotion);
     this.experience.dataset.view = 'intro';
+    this.gate.focus({ preventScroll: true });
 
     this.menu.addEventListener('click', this.handleMenuClick);
     this.menu.addEventListener('keydown', this.handleMenuKeys);
     for (const back of document.querySelectorAll<HTMLButtonElement>('[data-action="back"]'))
       back.addEventListener('click', this.handleBack);
-    this.skipButton.addEventListener('click', this.handleSkip);
-    this.experience.addEventListener('pointerdown', this.handlePointerDown);
+    this.gate.addEventListener('click', this.handleBegin);
+    this.menu.addEventListener('pointerover', this.handleHover);
+    this.menu.addEventListener('focusin', this.handleHover);
     window.addEventListener('keydown', this.handleKeyDown);
     window.addEventListener('click', this.handleGesture, true);
     window.addEventListener('touchend', this.handleGesture, true);
@@ -89,10 +106,21 @@ export class ExperienceUI {
   }
 
   public handlePhase({ phase, skipped }: PhaseChange): void {
-    if (phase === 'title') {
-      this.title.classList.toggle('is-quick', skipped);
-      setVisible(this.title, true);
+    if (skipped) {
+      setVisible(this.studioCard, false);
+      setVisible(this.titleCard, false);
+    }
+    if (phase === 'studio' && !skipped) {
+      setVisible(this.studioCard, true);
+      this.announcer.textContent = 'Klipza Studio apresenta';
+    } else if (phase === 'title' && !skipped) {
+      setVisible(this.studioCard, false);
+      setVisible(this.titleCard, true);
+      this.announcer.textContent = 'VÉRTICE';
+    } else if (phase === 'battle') {
+      setVisible(this.titleCard, false);
     } else if (phase === 'menu') {
+      this.title.classList.toggle('is-quick', skipped);
       this.revealMenu();
     }
   }
@@ -117,8 +145,9 @@ export class ExperienceUI {
     this.menu.removeEventListener('keydown', this.handleMenuKeys);
     for (const back of document.querySelectorAll<HTMLButtonElement>('[data-action="back"]'))
       back.removeEventListener('click', this.handleBack);
-    this.skipButton.removeEventListener('click', this.handleSkip);
-    this.experience.removeEventListener('pointerdown', this.handlePointerDown);
+    this.gate.removeEventListener('click', this.handleBegin);
+    this.menu.removeEventListener('pointerover', this.handleHover);
+    this.menu.removeEventListener('focusin', this.handleHover);
     window.removeEventListener('keydown', this.handleKeyDown);
     window.removeEventListener('click', this.handleGesture, true);
     window.removeEventListener('touchend', this.handleGesture, true);
@@ -128,16 +157,18 @@ export class ExperienceUI {
 
   private revealMenu(): void {
     if (!this.machine.request('main', performance.now(), MENU_REVEAL_LOCK_MS)) return;
-    const skipHadFocus = document.activeElement === this.skipButton;
+    const focusWasLost =
+      document.activeElement === document.body || document.activeElement === this.gate;
     setVisible(this.title, true);
-    setVisible(this.skipButton, false);
     setVisible(this.menu, true);
     this.experience.dataset.view = 'main';
-    if (skipHadFocus) this.firstEnabledButton()?.focus({ preventScroll: true });
+    this.announcer.textContent = '';
+    if (focusWasLost) this.firstEnabledButton()?.focus({ preventScroll: true });
   }
 
   private open(view: 'settings' | 'credits', opener: HTMLElement): void {
     if (!this.machine.request(view, performance.now())) return;
+    this.options.onInterfaceSound?.('select');
     this.returnFocus = opener;
     setVisible(this.menu, false);
     this.experience.dataset.view = view;
@@ -156,6 +187,7 @@ export class ExperienceUI {
     const from = this.machine.view;
     if (from !== 'settings' && from !== 'credits') return;
     if (!this.machine.request('main', performance.now())) return;
+    this.options.onInterfaceSound?.('back');
     if (from === 'credits') this.credits.hide();
     setVisible(this.settingsPanel, false);
     setVisible(this.creditsPanel, false);
@@ -193,14 +225,20 @@ export class ExperienceUI {
 
   private readonly handleBack = (): void => this.back();
 
-  private readonly handleSkip = (): void => {
-    if (this.machine.view === 'intro') this.options.onSkip();
+  private readonly handleBegin = (): void => {
+    if (this.begun) return;
+    this.begun = true;
+    setVisible(this.gate, false);
+    this.options.onBegin();
   };
 
-  private readonly handlePointerDown = (event: PointerEvent): void => {
-    if (this.machine.view !== 'intro' || event.target === this.skipButton) return;
-    if (event.pointerType === 'mouse' && event.button !== 0) return;
-    this.options.onSkip();
+  private lastHovered: Element | undefined;
+
+  private readonly handleHover = (event: Event): void => {
+    const button = (event.target as Element | null)?.closest('button[data-action]');
+    if (!button || button === this.lastHovered || (button as HTMLButtonElement).disabled) return;
+    this.lastHovered = button;
+    this.options.onInterfaceSound?.('hover');
   };
 
   private readonly handleKeyDown = (event: KeyboardEvent): void => {
@@ -208,11 +246,13 @@ export class ExperienceUI {
     if (event.defaultPrevented || event.repeat) return;
     const view = this.machine.view;
     if (view === 'intro') {
-      const onSkipButton = event.target === this.skipButton;
-      if (
-        event.key === 'Escape' ||
-        (!onSkipButton && (event.key === 'Enter' || event.key === ' '))
-      ) {
+      if (!this.begun) {
+        // Any key starts the film from the start screen.
+        if (event.key !== 'Tab') {
+          event.preventDefault();
+          this.handleBegin();
+        }
+      } else if (event.key === 'Escape') {
         event.preventDefault();
         this.options.onSkip();
       }

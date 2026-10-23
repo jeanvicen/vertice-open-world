@@ -4,20 +4,22 @@
 
 ## What runs today
 
-- **Opening sequence** (one deterministic timeline): black → a layered cosmos fades in (stars, sky, dust, a vast backlit planet, a moon) → an original procedural ship overtakes the camera and burns away towards the star → the VÉRTICE title → the side menu. Tap, click or press Escape/Enter/Space (or the _Skip intro_ button) to skip; the opening reaches the menu exactly once.
-- **Main menu**: PLAY (disabled, marked _In development_), SETTINGS, CREDITS, with keyboard (Tab, arrows, Escape) and touch support. The 3D scene keeps living behind it.
-- **Settings** that change real values and persist in `localStorage`: graphics quality (Automatic / Low / Medium / High: pixel-ratio cap, shadows and shadow-map size, star and dust counts, shader noise octaves, ship detail density), render scale (50–100 %), master volume (drives a synthesized ambient soundscape), reduced cinematic motion (System / On / Off) and fullscreen where the browser allows it.
-- **Credits**: a film-style scrolling roll with exactly the supplied credits, which can be left immediately with Back or Escape (a static list with reduced motion).
-- **Installable app (PWA)**: web manifest, icons and an offline-capable service worker. On Android, "Add to Home screen" / "Install app" opens VÉRTICE fullscreen, like a native game.
-- **Deploys** to Vercel (`vercel.json`) and GitHub Pages (repository subpath), from the same build.
+- **Start screen** ("Toque/Clique para começar"): browsers only allow sound after a gesture, so the film starts from one tap or key. On a phone browser the same tap also enters fullscreen.
+- **The opening film** (one deterministic timeline, about 34 s): black → **"Klipza Studio apresenta"** → the **VÉRTICE** title card → a space battle already under way (raiders destroying a defence patrol, with the planet as backdrop) → the protagonist's ship drops out of warp in the middle of the fight and destroys every raider while the camera chases it → it turns and burns towards the planet until it disappears → the menu. There is no skip button; on a keyboard, Escape skips.
+- **Main menu**: PLAY (disabled, marked _In development_), SETTINGS, CREDITS, with keyboard (Tab, arrows, Escape), touch and interface sounds. The 3D scene keeps living behind it.
+- **Structured, synthesized sound** (Web Audio, no audio files): separate music, effects, ambience and interface buses, a shared synthetic reverb and a master compressor. The score (studio sting, title hit, a battle cue that lifts into a heroic major when the protagonist arrives, a resolving pad, the ambient bed) and every laser, impact, explosion, warp and engine sound are scheduled from the same timeline as the visuals, panned by on-screen position and dulled by distance.
+- **Visuals**: an Earth-like world (oceans with sun glint, continents, polar ice, drifting clouds, reddened terminator light, city lights on the night side), a ringed gas giant (ring shadow, backlit ring glow), a small red planet, a moon, the star with soft diffraction rays, a shader sky and star field; raider and defender fighters, energy bolts, explosions (flash, turbulent fireball and smoke, shockwave, sparks, tumbling debris, a light that hits nearby hulls) and HDR bloom on Medium/High.
+- **Settings** that change real values and persist: graphics quality (Automatic / Low / Medium / High: pixel ratio, shadows, bloom and MSAA, star/dust counts, shader octaves, detail), render scale, master volume, reduced cinematic motion (a short, still version of the opening), fullscreen, and **Install app** where the browser offers installation (with iPhone instructions).
+- **Credits**: a film-style roll with exactly the supplied credits; Back or Escape leaves at once.
+- **Installable app (PWA)**: manifest, icons and an offline service worker; installed, it opens fullscreen like a native game.
+- **Deploys** to Vercel (`vercel.json`) and GitHub Pages from the same build.
 
-## What is procedural, simulated, or missing
+## What is procedural or missing
 
-- Everything visual is **procedural**: the ship is built from lofted hull sections, extrusions and instanced plating (no external model), the planet, sky and moon are shaders, and the panel textures are generated on a canvas. No third-party art or textures are used.
-- The ambient sound is **synthesized at runtime** (Web Audio); browsers only start it after your first tap or key press.
-- **Automatic** quality starts from conservative browser hints (never High) and only steps down after a measured sustained frame time above ~29 ms. It cannot know the real GPU.
-- Antialiasing is fixed when the WebGL context is created; a change of quality tier applies it on the next launch (the settings panel says so).
-- There is no gameplay, mission, save or audio-file system yet. The original walkable blockout scene (`BootScene`) stays registered for the future PLAY transition.
+- Everything visual and audible is generated in code: no third-party models, textures or audio files.
+- Automatic quality starts conservatively and steps down only after measured slow frames; it cannot know the real GPU.
+- Antialiasing of the canvas is fixed when the WebGL context is created.
+- There is no gameplay yet; the walkable blockout (`BootScene`) stays registered for the future PLAY transition.
 
 ## Commands
 

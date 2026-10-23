@@ -3,11 +3,15 @@ import {
   BackSide,
   BufferAttribute,
   BufferGeometry,
+  CanvasTexture,
   Color,
+  DoubleSide,
   Group,
   Mesh,
   Points,
+  RingGeometry,
   ShaderMaterial,
+  SRGBColorSpace,
   SphereGeometry,
   Sprite,
   SpriteMaterial,
@@ -20,11 +24,18 @@ import { NOISE_GLSL } from './glsl';
 import {
   ATMOSPHERE_COLOR,
   ATMOSPHERE_RADIUS,
+  GIANT_CENTER,
+  GIANT_RADIUS,
+  lightDirectionFor,
   MOON_CENTER,
   MOON_RADIUS,
   PLANET_CENTER,
   PLANET_LIGHT_DIRECTION,
   PLANET_RADIUS,
+  RED_PLANET_CENTER,
+  RED_PLANET_RADIUS,
+  RING_INNER,
+  RING_OUTER,
   SKY_RADIUS,
   STAR_RADIUS_MAX,
   STAR_RADIUS_MIN,
@@ -55,7 +66,10 @@ export interface CosmosReveal {
   readonly dust: number;
 }
 
-/** Background layers of the opening: sky, stars, dust, planet, moon and the star itself. */
+/**
+ * Background layers: sky, stars, dust, an inhabited world with atmosphere, a ringed gas giant,
+ * a small red planet, a moon and the star itself.
+ */
 export class Cosmos {
   public readonly root = new Group();
   private readonly skyMaterial: ShaderMaterial;
@@ -68,7 +82,9 @@ export class Cosmos {
   private readonly planetMaterial: ShaderMaterial;
   private readonly atmosphereMaterial: ShaderMaterial;
   private readonly moonMaterial: ShaderMaterial;
+  private readonly bodyMaterials: ShaderMaterial[] = [];
   private readonly sunGlow: Sprite;
+  private readonly sunRays: Sprite;
   private readonly sunCore: Sprite;
 
   public constructor(resources: ResourceTracker, glowTexture: Texture, profile: RenderProfile) {
@@ -123,7 +139,7 @@ export class Cosmos {
           uAtmoColor: { value: atmosphereColor },
         },
         vertexShader: BODY_VERTEX,
-        fragmentShader: PLANET_FRAGMENT,
+        fragmentShader: EARTH_FRAGMENT,
         dithering: true,
       }),
     );
@@ -132,8 +148,8 @@ export class Cosmos {
       this.planetMaterial,
     );
     this.planet.position.copy(PLANET_CENTER);
-    // Tilted axis: the cloud bands cross the crescent diagonally instead of flat.
-    this.planet.rotation.set(0.18, 0, -0.42);
+    // Tilted axis, as for any real world.
+    this.planet.rotation.set(0.18, 0, -0.32);
     this.root.add(this.planet);
 
     this.atmosphereMaterial = resources.track(
@@ -162,25 +178,98 @@ export class Cosmos {
     atmosphere.position.copy(PLANET_CENTER);
     this.root.add(atmosphere);
 
-    this.moonMaterial = resources.track(
+    const rocky = (center: Vector3, radius: number, dark: Color, light: Color): ShaderMaterial => {
+      const material = resources.track(
+        new ShaderMaterial({
+          uniforms: {
+            uReveal: { value: 0 },
+            uOctaves: { value: Math.min(4, profile.surfaceOctaves) },
+            uLightDir: { value: lightDirectionFor(center) },
+            uSunColor: { value: sunColor },
+            uDark: { value: dark },
+            uLight: { value: light },
+          },
+          vertexShader: BODY_VERTEX,
+          fragmentShader: MOON_FRAGMENT,
+          dithering: true,
+        }),
+      );
+      const body = new Mesh(resources.track(new SphereGeometry(radius, 64, 40)), material);
+      body.position.copy(center);
+      this.root.add(body);
+      return material;
+    };
+    this.moonMaterial = rocky(
+      MOON_CENTER,
+      MOON_RADIUS,
+      new Color(0.1, 0.1, 0.105),
+      new Color(0.3, 0.29, 0.28),
+    );
+    this.bodyMaterials.push(
+      rocky(
+        RED_PLANET_CENTER,
+        RED_PLANET_RADIUS,
+        new Color(0.16, 0.07, 0.04),
+        new Color(0.46, 0.22, 0.12),
+      ),
+    );
+
+    // The ringed giant: banded atmosphere plus a ring system lit from behind.
+    const giantLight = lightDirectionFor(GIANT_CENTER);
+    const giantMaterial = resources.track(
       new ShaderMaterial({
         uniforms: {
           uReveal: { value: 0 },
-          uOctaves: { value: profile.surfaceOctaves },
-          uLightDir: { value: SUN_POSITION.clone().sub(MOON_CENTER).normalize() },
+          uOctaves: { value: Math.min(4, profile.surfaceOctaves) },
+          uTime: { value: 0 },
+          uLightDir: { value: giantLight },
           uSunColor: { value: sunColor },
+          uAtmoColor: { value: new Color(0.62, 0.52, 0.36) },
+          uDeep: { value: new Color(0.16, 0.11, 0.07) },
+          uPale: { value: new Color(0.62, 0.53, 0.4) },
+          uAccent: { value: new Color(0.52, 0.3, 0.17) },
         },
         vertexShader: BODY_VERTEX,
-        fragmentShader: MOON_FRAGMENT,
+        fragmentShader: PLANET_FRAGMENT,
         dithering: true,
       }),
     );
-    const moon = new Mesh(
-      resources.track(new SphereGeometry(MOON_RADIUS, 64, 40)),
-      this.moonMaterial,
+    const giant = new Mesh(
+      resources.track(new SphereGeometry(GIANT_RADIUS, 96, 64)),
+      giantMaterial,
     );
-    moon.position.copy(MOON_CENTER);
-    this.root.add(moon);
+    giant.position.copy(GIANT_CENTER);
+    giant.rotation.set(0.42, 0, 0.36);
+    this.root.add(giant);
+    this.bodyMaterials.push(giantMaterial);
+    const ringMaterial = resources.track(
+      new ShaderMaterial({
+        uniforms: {
+          uReveal: { value: 0 },
+          uCenter: { value: GIANT_CENTER.clone() },
+          uPlanetRadius: { value: GIANT_RADIUS },
+          uInner: { value: RING_INNER },
+          uOuter: { value: RING_OUTER },
+          uLightDir: { value: giantLight },
+          uSunColor: { value: sunColor },
+        },
+        vertexShader: BODY_VERTEX,
+        fragmentShader: RING_FRAGMENT,
+        side: DoubleSide,
+        depthWrite: false,
+        transparent: true,
+      }),
+    );
+    const rings = new Mesh(
+      resources.track(new RingGeometry(RING_INNER, RING_OUTER, 192, 1)),
+      ringMaterial,
+    );
+    rings.position.copy(GIANT_CENTER);
+    // Ring plane follows the giant's equator.
+    rings.rotation.set(0.42 - Math.PI / 2, 0, 0.36);
+    rings.renderOrder = 1;
+    this.root.add(rings);
+    this.bodyMaterials.push(ringMaterial);
 
     const glowMaterial = resources.track(
       new SpriteMaterial({
@@ -210,6 +299,23 @@ export class Cosmos {
     this.sunCore.scale.setScalar(260);
     this.sunCore.position.copy(SUN_POSITION);
     this.root.add(this.sunCore);
+    // Faint diffraction rays: a lens trait, kept well below the glow.
+    const rays = resources.track(createStarburstTexture());
+    this.sunRays = new Sprite(
+      resources.track(
+        new SpriteMaterial({
+          map: rays,
+          color: new Color(1.6, 1.42, 1.2),
+          blending: AdditiveBlending,
+          depthWrite: false,
+          transparent: true,
+          opacity: 0,
+        }),
+      ),
+    );
+    this.sunRays.scale.setScalar(1500);
+    this.sunRays.position.copy(SUN_POSITION);
+    this.root.add(this.sunRays);
 
     this.dustMaterial = resources.track(
       new ShaderMaterial({
@@ -241,6 +347,10 @@ export class Cosmos {
     this.skyMaterial.uniforms.uOctaves!.value = profile.skyOctaves;
     this.planetMaterial.uniforms.uOctaves!.value = profile.surfaceOctaves;
     this.moonMaterial.uniforms.uOctaves!.value = Math.min(4, profile.surfaceOctaves);
+    for (const material of this.bodyMaterials) {
+      if (material.uniforms.uOctaves)
+        material.uniforms.uOctaves.value = Math.min(4, profile.surfaceOctaves);
+    }
   }
 
   /** Point sprites are sized in device pixels, so they follow the renderer's pixel ratio. */
@@ -257,6 +367,11 @@ export class Cosmos {
     this.planetMaterial.uniforms.uTime!.value = timeSeconds;
     this.atmosphereMaterial.uniforms.uReveal!.value = reveal.bodies;
     this.moonMaterial.uniforms.uReveal!.value = reveal.bodies;
+    for (const material of this.bodyMaterials) {
+      material.uniforms.uReveal!.value = reveal.bodies;
+      if (material.uniforms.uTime) material.uniforms.uTime.value = timeSeconds;
+    }
+    this.sunRays.material.opacity = 0.22 * reveal.bodies;
     this.sunGlow.material.opacity = 0.32 * reveal.bodies;
     this.sunCore.material.opacity = reveal.bodies;
     // Very slow axial rotation: alive, never distracting.
@@ -464,6 +579,9 @@ uniform float uTime;
 uniform vec3 uLightDir;
 uniform vec3 uSunColor;
 uniform vec3 uAtmoColor;
+uniform vec3 uDeep;
+uniform vec3 uPale;
+uniform vec3 uAccent;
 varying vec3 vObjectPosition;
 varying vec3 vWorldNormal;
 varying vec3 vWorldPosition;
@@ -476,7 +594,7 @@ void main() {
   float ndl = dot(N, uLightDir);
   float fresnel = 1.0 - max(dot(N, V), 0.0);
   float day = smoothstep(-0.2, 0.3, ndl);
-  vec3 albedo = vec3(0.05, 0.06, 0.08);
+  vec3 albedo = uDeep * 0.5;
   // The night side is effectively black: skip the expensive cloud bands there.
   if (day > 0.002) {
     vec3 p = normalize(vObjectPosition);
@@ -485,11 +603,8 @@ void main() {
     float broad = 0.5 + 0.5 * sin(latitude * 11.0 + warp * 2.4);
     float fine = 0.5 + 0.5 * sin(latitude * 47.0 + warp * 6.0);
     float storms = fbm(vec3(p.x * 5.0, p.y * 28.0, p.z * 5.0), uOctaves);
-    vec3 deep = vec3(0.07, 0.09, 0.125);
-    vec3 pale = vec3(0.42, 0.45, 0.48);
-    vec3 sand = vec3(0.47, 0.39, 0.29);
-    albedo = mix(deep, pale, broad * 0.6 + storms * 0.4);
-    albedo = mix(albedo, sand, smoothstep(0.55, 0.95, fine) * 0.24 * broad);
+    albedo = mix(uDeep, uPale, broad * 0.6 + storms * 0.4);
+    albedo = mix(albedo, uAccent, smoothstep(0.55, 0.95, fine) * 0.3 * broad);
     albedo *= mix(1.0, 0.55, smoothstep(0.55, 0.92, abs(p.y)));
   }
   float diffuse = max(ndl, 0.0);
@@ -533,6 +648,8 @@ uniform float uReveal;
 uniform int uOctaves;
 uniform vec3 uLightDir;
 uniform vec3 uSunColor;
+uniform vec3 uDark;
+uniform vec3 uLight;
 varying vec3 vObjectPosition;
 varying vec3 vWorldNormal;
 #include <common>
@@ -542,7 +659,10 @@ void main() {
   vec3 p = normalize(vObjectPosition);
   float maria = fbm(p * 2.6, uOctaves);
   float grit = fbm(p * 14.0, uOctaves);
-  vec3 albedo = mix(vec3(0.1, 0.1, 0.105), vec3(0.3, 0.29, 0.28), smoothstep(0.35, 0.7, maria));
+  // Crater-like pits: sharp rims around small round depressions.
+  float pits = smoothstep(0.62, 0.7, valueNoise(p * 26.0)) - smoothstep(0.72, 0.8, valueNoise(p * 26.0));
+  vec3 albedo = mix(uDark, uLight, smoothstep(0.35, 0.7, maria));
+  albedo *= 1.0 + pits * 0.35;
   albedo *= 0.8 + grit * 0.4;
   float ndl = max(dot(normalize(vWorldNormal), uLightDir), 0.0);
   vec3 color = albedo * uSunColor * ndl * 2.2 + vec3(0.0015, 0.0018, 0.0025);
@@ -550,3 +670,146 @@ void main() {
   ${OUTPUT_GLSL}
 }
 `;
+
+const EARTH_FRAGMENT = /* glsl */ `
+uniform float uReveal;
+uniform int uOctaves;
+uniform float uTime;
+uniform vec3 uLightDir;
+uniform vec3 uSunColor;
+uniform vec3 uAtmoColor;
+varying vec3 vObjectPosition;
+varying vec3 vWorldNormal;
+varying vec3 vWorldPosition;
+#include <common>
+#include <dithering_pars_fragment>
+${NOISE_GLSL}
+void main() {
+  vec3 N = normalize(vWorldNormal);
+  vec3 V = normalize(cameraPosition - vWorldPosition);
+  vec3 L = uLightDir;
+  float ndl = dot(N, L);
+  float fresnel = 1.0 - max(dot(N, V), 0.0);
+  float day = smoothstep(-0.12, 0.22, ndl);
+  vec3 p = normalize(vObjectPosition);
+
+  // Continents, coastlines and polar ice.
+  float continents = fbm(p * 1.7 + vec3(7.3, 1.1, 4.2), uOctaves);
+  float relief = fbm(p * 7.5, max(uOctaves - 1, 1));
+  float height = continents * 0.78 + relief * 0.22;
+  float land = smoothstep(0.512, 0.53, height);
+  float latitude = abs(p.y);
+  float ice = smoothstep(0.8, 0.9, latitude + (relief - 0.5) * 0.14);
+
+  // Weather: slowly drifting cloud systems, warped so they swirl instead of tiling.
+  vec3 drift = vec3(uTime * 0.0035, 0.0, uTime * 0.0012);
+  float swirl = uOctaves > 3 ? fbm(p * 4.2 + drift, 2) : 0.5;
+  float clouds = smoothstep(0.52, 0.8, fbm(p * 3.1 + drift * 1.4 + swirl * 0.7, uOctaves));
+
+  vec3 deepOcean = vec3(0.004, 0.016, 0.042);
+  vec3 shelf = vec3(0.01, 0.055, 0.09);
+  vec3 ocean = mix(deepOcean, shelf, smoothstep(0.44, 0.512, height));
+  float arid = smoothstep(0.45, 0.72, relief) * (1.0 - smoothstep(0.42, 0.7, latitude));
+  vec3 ground = mix(vec3(0.045, 0.07, 0.032), vec3(0.3, 0.22, 0.12), arid);
+  vec3 surface = mix(ocean, ground, land);
+  surface = mix(surface, vec3(0.78, 0.8, 0.83), ice);
+
+  // Sunlight reddens as it crosses more air near the terminator.
+  float diffuse = max(ndl, 0.0);
+  vec3 sunset = vec3(1.0, 0.42, 0.18);
+  vec3 tint = mix(sunset, vec3(1.0), smoothstep(0.0, 0.32, ndl));
+  vec3 color = surface * uSunColor * tint * diffuse * 2.5;
+  vec3 H = normalize(L + V);
+  float glint = pow(max(dot(N, H), 0.0), 140.0) * (1.0 - land) * (1.0 - clouds) * diffuse;
+  color += uSunColor * tint * glint * 2.6;
+  vec3 cloudLit = vec3(0.86) * uSunColor * tint * (diffuse * 2.3 + 0.015);
+  color = mix(color, cloudLit, clouds * 0.9);
+
+  // Atmosphere: blue haze on the lit limb, warm forward scattering towards the star.
+  color += uAtmoColor * pow(fresnel, 3.0) * day * 0.75;
+  float forward = pow(max(dot(-V, L), 0.0), 5.0);
+  color += uSunColor * mix(uAtmoColor, sunset, 0.4) * pow(fresnel, 5.0) * forward * day * 2.4;
+
+  // Night side: city lights along coasts and in clusters, dimmed by cloud cover.
+  float night = 1.0 - smoothstep(-0.06, 0.1, ndl);
+  if (night > 0.01) {
+    // Sparse settlements: fine grain, concentrated along coasts, never solid patches.
+    float clusters = smoothstep(0.6, 0.85, fbm(p * 11.0 + 3.0, min(uOctaves, 3)));
+    float coast = 1.0 - smoothstep(0.0, 0.03, abs(height - 0.52));
+    float grain = smoothstep(0.82, 0.97, valueNoise(p * 520.0));
+    float lights = land * (1.0 - ice) * (clusters * 0.6 + coast * 0.7) * grain;
+    color += vec3(1.0, 0.72, 0.42) * lights * night * (1.0 - clouds * 0.85) * 0.5;
+  }
+  color += (vec3(0.0015, 0.0022, 0.004) + surface * 0.012) * (1.0 - day);
+  gl_FragColor = vec4(color * uReveal, 1.0);
+  ${OUTPUT_GLSL}
+}
+`;
+
+const RING_FRAGMENT = /* glsl */ `
+uniform float uReveal;
+uniform vec3 uCenter;
+uniform float uPlanetRadius;
+uniform float uInner;
+uniform float uOuter;
+uniform vec3 uLightDir;
+uniform vec3 uSunColor;
+varying vec3 vWorldPosition;
+#include <common>
+${NOISE_GLSL}
+void main() {
+  float radius = length(vWorldPosition - uCenter);
+  float t = clamp((radius - uInner) / (uOuter - uInner), 0.0, 1.0);
+  // Ringlets and gaps, from layered 1D noise across the radius.
+  float ringlets = valueNoise(vec3(t * 90.0, 0.5, 0.5)) * 0.5 + valueNoise(vec3(t * 23.0, 3.5, 1.5)) * 0.5;
+  float gap = smoothstep(0.012, 0.0, abs(t - 0.64)) + smoothstep(0.008, 0.0, abs(t - 0.86)) * 0.7;
+  float edge = smoothstep(0.0, 0.05, t) * smoothstep(1.0, 0.9, t);
+  float density = clamp(ringlets * 1.2 - 0.15, 0.0, 1.0) * edge * (1.0 - gap);
+  // The giant's shadow across the rings.
+  vec3 toCenter = uCenter - vWorldPosition;
+  float along = dot(toCenter, uLightDir);
+  float miss = length(toCenter - uLightDir * along);
+  float shadow = along > 0.0 ? smoothstep(uPlanetRadius * 0.97, uPlanetRadius * 1.03, miss) : 1.0;
+  // Ice grains scatter strongly forward: rings glow when seen against the star.
+  vec3 D = normalize(vWorldPosition - cameraPosition);
+  float forward = pow(max(dot(D, uLightDir), 0.0), 6.0);
+  vec3 tint = mix(vec3(0.62, 0.55, 0.45), vec3(0.8, 0.74, 0.64), ringlets);
+  vec3 color = tint * uSunColor * (0.16 + forward * 2.2) * shadow;
+  gl_FragColor = vec4(color * uReveal, density * 0.85 * uReveal);
+  #include <tonemapping_fragment>
+  #include <colorspace_fragment>
+}
+`;
+
+/** Thin diffraction spikes for the star, drawn once into a small canvas. */
+function createStarburstTexture(size = 256): CanvasTexture {
+  const canvas = document.createElement('canvas');
+  canvas.width = canvas.height = size;
+  const context = canvas.getContext('2d');
+  if (!context) throw new Error('2D canvas is unavailable for procedural textures.');
+  const half = size / 2;
+  context.translate(half, half);
+  context.globalCompositeOperation = 'lighter';
+  const random = createRandom(0x5a7);
+  for (let ray = 0; ray < 12; ray += 1) {
+    const angle = (ray / 12) * Math.PI * 2 + random() * 0.08;
+    const length = half * (ray % 3 === 0 ? 1 : 0.55 + random() * 0.2);
+    const gradient = context.createLinearGradient(
+      0,
+      0,
+      Math.cos(angle) * length,
+      Math.sin(angle) * length,
+    );
+    gradient.addColorStop(0, 'rgba(255,255,255,0.55)');
+    gradient.addColorStop(1, 'rgba(255,255,255,0)');
+    context.strokeStyle = gradient;
+    context.lineWidth = ray % 3 === 0 ? 1.6 : 1;
+    context.beginPath();
+    context.moveTo(0, 0);
+    context.lineTo(Math.cos(angle) * length, Math.sin(angle) * length);
+    context.stroke();
+  }
+  const texture = new CanvasTexture(canvas);
+  texture.colorSpace = SRGBColorSpace;
+  return texture;
+}

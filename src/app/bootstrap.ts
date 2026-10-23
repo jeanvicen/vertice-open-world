@@ -4,7 +4,9 @@ import '@fontsource/dm-mono/latin-400.css';
 import '../styles.css';
 import { App } from './App';
 import { BASE_URL } from './config';
+import { watchInstallability } from './install';
 
+watchInstallability();
 const app = new App();
 app.start();
 

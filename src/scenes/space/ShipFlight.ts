@@ -1,21 +1,35 @@
 import { CatmullRomCurve3, Matrix4, Quaternion, Vector3 } from 'three';
-import { SUN_DIRECTION } from './layout';
+import { PLANET_CENTER, PLANET_RADIUS } from './layout';
 import { smoothstep } from './random';
 
-/** Cruise speed while overtaking the camera, in units per second. */
-const CRUISE_SPEED = 30;
-/** Seconds after entry when the drive lights for the long run towards the star. */
-const BURN_START = 4.4;
-const BURN_ACCELERATION = 46;
+/** Centre of the dogfight the hero interrupts, in scene units. */
+export const BATTLE_CENTER = new Vector3(30, -6, -240);
+
+/** Seconds the warp streak takes to drop the ship out of hyperspace. */
+export const WARP_SECONDS = 0.55;
+const CRUISE_SPEED = 34;
+const DEPARTURE_ACCELERATION = 64;
 /** Distance along the path where the reduced-motion composition holds the ship. */
-export const STATION_DISTANCE = 250;
+export const STATION_DISTANCE = 120;
+
+/** Where the hero comes out of warp, and where the warp streak starts. */
+export const WARP_EXIT = BATTLE_CENTER.clone().add(new Vector3(-95, 12, 70));
+export const WARP_ORIGIN = WARP_EXIT.clone().add(new Vector3(-620, 70, 420));
+
+/** The hero vanishes against the planet's night side, just inside the bright limb. */
+const LIMB_DIRECTION = new Vector3(-0.66, 0.75, 0).normalize();
+export const DEPARTURE_TARGET = PLANET_CENTER.clone()
+  .addScaledVector(LIMB_DIRECTION, PLANET_RADIUS * 0.55)
+  .multiplyScalar(0.62);
 
 export interface ShipState {
   readonly position: Vector3;
   readonly quaternion: Quaternion;
-  /** 0 before entry, 1 after leaving the path. */
+  /** 0 before arrival, 1 at the end of the path. */
   progress: number;
   visible: boolean;
+  /** True during the warp streak. */
+  warping: boolean;
   engine: number;
   hullFade: number;
   engineFade: number;
@@ -27,22 +41,26 @@ export function createShipState(): ShipState {
     quaternion: new Quaternion(),
     progress: 0,
     visible: false,
+    warping: false,
     engine: 1,
     hullFade: 1,
     engineFade: 1,
   };
 }
 
-/** Distance travelled after entry: steady cruise, then a constant-thrust burn. */
-export function flightDistance(secondsSinceEntry: number): number {
-  if (secondsSinceEntry <= 0) return 0;
-  const burn = Math.max(0, secondsSinceEntry - BURN_START);
-  return CRUISE_SPEED * secondsSinceEntry + 0.5 * BURN_ACCELERATION * burn * burn;
+/**
+ * Distance travelled along the main path after leaving warp: a steady attack run through the
+ * battle, then constant thrust towards the planet from `departureDelay` seconds.
+ */
+export function flightDistance(secondsAfterWarp: number, departureDelay: number): number {
+  if (secondsAfterWarp <= 0) return 0;
+  const burn = Math.max(0, secondsAfterWarp - departureDelay);
+  return CRUISE_SPEED * secondsAfterWarp + 0.5 * DEPARTURE_ACCELERATION * burn * burn;
 }
 
 /**
- * The ship overtakes the camera from behind its left shoulder, settles onto a heading for the
- * star and burns away until it is lost against the planet's bright limb.
+ * The protagonist's flight: a warp drop into the battle, a run straight through it, a banked
+ * turn and a burn towards the planet until the ship is lost against its night side.
  */
 export class ShipFlight {
   private readonly curve: CatmullRomCurve3;
@@ -55,59 +73,95 @@ export class ShipFlight {
   private readonly roll = new Quaternion();
   private readonly forward = new Vector3(0, 0, 1);
 
-  public constructor() {
+  /**
+   * @param departureDelay seconds between leaving warp and starting the burn to the planet.
+   */
+  public constructor(private readonly departureDelay: number) {
     this.curve = new CatmullRomCurve3(
       [
-        new Vector3(-27, 12.5, 96),
-        new Vector3(-11.5, 6.4, 18),
-        new Vector3(-4.5, 3.1, -46),
-        new Vector3(34, 20, -360),
-        SUN_DIRECTION.clone().multiplyScalar(1250),
-        SUN_DIRECTION.clone().multiplyScalar(2700),
+        WARP_EXIT,
+        BATTLE_CENTER.clone().add(new Vector3(-36, 4, 16)),
+        BATTLE_CENTER.clone().add(new Vector3(18, -3, -24)),
+        BATTLE_CENTER.clone().add(new Vector3(62, 4, -96)),
+        BATTLE_CENTER.clone()
+          .lerp(DEPARTURE_TARGET, 0.25)
+          .add(new Vector3(40, 30, 0)),
+        DEPARTURE_TARGET,
       ],
       false,
       'centripetal',
     );
-    this.curve.arcLengthDivisions = 600;
+    this.curve.arcLengthDivisions = 800;
     this.length = this.curve.getLength();
   }
 
+  /** Position and attitude on the main path at a given distance. */
   public sampleAtDistance(distance: number, timeSeconds: number, state: ShipState): void {
     const u = Math.min(1, Math.max(0, distance / this.length));
     state.progress = u;
     this.curve.getPointAt(u, state.position);
     this.curve.getTangentAt(u, this.tangent);
-    this.curve.getTangentAt(Math.min(1, u + 6 / this.length), this.ahead);
+    this.curve.getTangentAt(Math.min(1, u + 8 / this.length), this.ahead);
     // Bank into the turn, proportional to the heading change over the next few units.
     const turn = this.side.crossVectors(this.tangent, this.ahead).y;
-    const bank = Math.max(-0.32, Math.min(0.32, -turn * 26));
-    // Slow attitude corrections, a fraction of a degree.
+    const bank = Math.max(-0.42, Math.min(0.42, -turn * 22));
     const trim = Math.sin(timeSeconds * 0.55) * 0.006;
-    this.up.set(0, 1, 0);
-    this.side.crossVectors(this.up, this.tangent).normalize();
-    this.up.crossVectors(this.tangent, this.side).normalize();
-    this.basis.makeBasis(this.side, this.up, this.tangent);
-    state.quaternion.setFromRotationMatrix(this.basis);
-    state.quaternion.multiply(this.roll.setFromAxisAngle(this.forward, bank + trim));
+    this.orient(this.tangent, bank + trim, state.quaternion);
   }
 
-  /** Normal cinematic flight, sampled purely from time since the ship's entry. */
-  public sample(secondsSinceEntry: number, timeSeconds: number, state: ShipState): void {
-    const distance = flightDistance(secondsSinceEntry);
-    this.sampleAtDistance(distance, timeSeconds, state);
+  /** Cinematic flight, sampled purely from the time since the warp began. */
+  public sample(secondsSinceWarp: number, timeSeconds: number, state: ShipState): void {
+    state.warping = false;
+    if (secondsSinceWarp < 0) {
+      state.position.copy(WARP_ORIGIN);
+      this.tangent.subVectors(WARP_EXIT, WARP_ORIGIN).normalize();
+      this.orient(this.tangent, 0, state.quaternion);
+      state.visible = false;
+      state.progress = 0;
+      return;
+    }
+    if (secondsSinceWarp < WARP_SECONDS) {
+      // Hyperspace drop: a hard deceleration along a straight line onto the battlefield.
+      const k = secondsSinceWarp / WARP_SECONDS;
+      const eased = 1 - (1 - k) ** 4;
+      state.position.lerpVectors(WARP_ORIGIN, WARP_EXIT, eased);
+      this.tangent.subVectors(WARP_EXIT, WARP_ORIGIN).normalize();
+      this.orient(this.tangent, 0, state.quaternion);
+      state.visible = true;
+      state.warping = true;
+      state.progress = 0;
+      state.engine = 2.2;
+      state.hullFade = 1;
+      state.engineFade = 1;
+      return;
+    }
+    const afterWarp = secondsSinceWarp - WARP_SECONDS;
+    this.sampleAtDistance(flightDistance(afterWarp, this.departureDelay), timeSeconds, state);
     const u = state.progress;
-    state.visible = secondsSinceEntry > 0 && u < 1;
-    state.engine = 1 + 0.7 * smoothstep(BURN_START - 0.3, BURN_START + 1.6, secondsSinceEntry);
-    state.hullFade = 1 - smoothstep(0.72, 0.9, u);
-    state.engineFade = 1 - smoothstep(0.82, 0.995, u);
+    state.visible = u < 1;
+    const settle = 1 + 1.1 * (1 - smoothstep(0, 1.2, afterWarp));
+    const burn = 0.85 * smoothstep(this.departureDelay - 0.3, this.departureDelay + 1.4, afterWarp);
+    state.engine = settle + burn;
+    state.hullFade = 1 - smoothstep(0.78, 0.93, u);
+    state.engineFade = 1 - smoothstep(0.86, 0.995, u);
   }
 
-  /** Reduced motion: the ship holds station mid-distance with its drive idling. */
+  /** Reduced motion: the ship holds station beyond the empty battlefield, drive idling. */
   public sampleStation(timeSeconds: number, state: ShipState): void {
     this.sampleAtDistance(STATION_DISTANCE, timeSeconds, state);
     state.visible = true;
+    state.warping = false;
     state.engine = 0.75;
     state.hullFade = 1;
     state.engineFade = 1;
+  }
+
+  private orient(direction: Vector3, roll: number, out: Quaternion): void {
+    this.up.set(0, 1, 0);
+    this.side.crossVectors(this.up, direction).normalize();
+    this.up.crossVectors(direction, this.side).normalize();
+    this.basis.makeBasis(this.side, this.up, direction);
+    out.setFromRotationMatrix(this.basis);
+    out.multiply(this.roll.setFromAxisAngle(this.forward, roll));
   }
 }

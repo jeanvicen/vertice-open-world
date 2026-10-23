@@ -11,6 +11,7 @@ import { InputSystem } from '../systems/InputSystem';
 import { MotionPreferenceWatcher } from '../systems/MotionPreference';
 import { loadSettings, saveSettings } from '../systems/SettingsStore';
 import { ExperienceUI } from '../ui/ExperienceUI';
+import { isStandalone } from './install';
 
 /** Owns the application lifetime and wires systems together; it holds no scene logic. */
 export class App {
@@ -63,7 +64,13 @@ export class App {
 
       const ui = (this.ui = new ExperienceUI({
         reducedMotion: motion.reduced,
+        onBegin: () => {
+          audio.unlock();
+          this.enterFullscreenOnPhones();
+          this.space?.begin();
+        },
         onSkip: () => this.space?.skip(),
+        onInterfaceSound: (kind) => audio.playInterface(kind),
         onSettingsChange: (patch) => this.updateSettings(patch),
         onUserGesture: () => audio.unlock(),
         getSettingsStatus: () => ({
@@ -86,6 +93,7 @@ export class App {
         this.space = new SpaceIntroScene({
           quality,
           motion,
+          audio,
           onPhase: (change) => ui.handlePhase(change),
         });
         return this.space;
@@ -136,6 +144,19 @@ export class App {
     this.quality = undefined;
     this.motion?.dispose();
     this.motion = undefined;
+  }
+
+  /**
+   * In a phone browser tab, the start gesture also takes the film fullscreen. Installed apps
+   * already run fullscreen; desktops keep their window (fullscreen is in Settings).
+   */
+  private enterFullscreenOnPhones(): void {
+    const coarse = window.matchMedia?.('(pointer: coarse)').matches ?? false;
+    if (!coarse || isStandalone() || !document.fullscreenEnabled || document.fullscreenElement)
+      return;
+    void document.documentElement
+      .requestFullscreen({ navigationUI: 'hide' })
+      .catch(() => undefined);
   }
 
   private updateSettings(patch: Partial<UserSettings>): void {

@@ -4,7 +4,7 @@
  * Paths are relative to this file, so the same worker serves "/" (Vercel) and a
  * repository subpath (GitHub Pages).
  */
-const CACHE = 'vertice-v1';
+const CACHE = 'vertice-v2';
 const SHELL = ['./', './manifest.webmanifest', './icons/icon-192.png', './icons/icon-512.png'];
 
 self.addEventListener('install', (event) => {

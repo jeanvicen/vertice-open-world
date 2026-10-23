@@ -1,23 +1,39 @@
-export type IntroPhase = 'void' | 'cosmos' | 'ship' | 'title' | 'menu';
+export type IntroPhase = 'void' | 'studio' | 'title' | 'battle' | 'hero' | 'departure' | 'menu';
 
-export const INTRO_PHASES: readonly IntroPhase[] = ['void', 'cosmos', 'ship', 'title', 'menu'];
+export const INTRO_PHASES: readonly IntroPhase[] = [
+  'void',
+  'studio',
+  'title',
+  'battle',
+  'hero',
+  'departure',
+  'menu',
+];
 
 /** Start time of each phase after the black opening, in scene seconds. */
 export type IntroSchedule = Readonly<Record<Exclude<IntroPhase, 'void'>, number>>;
 
+/**
+ * The film: black, "Klipza Studio apresenta", the title card, a battle already under way, the
+ * protagonist's ship warping in and clearing it, its departure towards the planet, the menu.
+ */
 export const CINEMATIC_SCHEDULE: IntroSchedule = {
-  cosmos: 1.6,
-  ship: 7.2,
-  title: 14.6,
-  menu: 18.4,
+  studio: 1.2,
+  title: 5.6,
+  battle: 10.6,
+  hero: 17.6,
+  departure: 26.4,
+  menu: 34,
 };
 
-/** Reduced motion: short dissolves, no ship passage and no camera travel. */
+/** Reduced motion: the two cards, then a still dissolve to the menu without the battle. */
 export const REDUCED_MOTION_SCHEDULE: IntroSchedule = {
-  cosmos: 0.4,
-  ship: 2.2,
-  title: 2.2,
-  menu: 3.6,
+  studio: 0.6,
+  title: 3.8,
+  battle: 7.2,
+  hero: 7.2,
+  departure: 7.2,
+  menu: 8.4,
 };
 
 export interface PhaseChange {

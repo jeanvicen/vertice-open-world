@@ -31,8 +31,8 @@ The service worker is only registered in production builds. After a deploy, the 
 
 ## Android test procedure
 
-1. Open the published URL in Chrome for Android. The screen must stay black, then reveal stars, the planet, the ship and the title.
-2. Tap once during the opening: it should cut to the menu, and that same tap must not open a panel.
+1. Open the published URL in Chrome for Android, sound on. Tap **Toque para começar**: the page goes fullscreen, then "Klipza Studio apresenta", the title card, the battle, the protagonist's arrival and departure, and the menu, with music and effects.
+2. Tapping during the film must not skip it (there is no skip button by design).
 3. Check that PLAY is dimmed and labelled _In development_ and does nothing when tapped.
 4. Open **Settings**: switch Low/Medium/High (the note under the control changes, and the image gets sharper or softer), move Render scale to 50 % (visibly softer), move the volume (the ambient sound changes after your first tap). Reload: your choices persist.
 5. Open **Credits**: the roll starts low on the screen; **Back** works immediately.

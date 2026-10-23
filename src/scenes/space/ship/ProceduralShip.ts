@@ -365,7 +365,7 @@ export class ProceduralShip implements ShipModel {
     const level = this.engineIntensity * this.engineFade;
     this.coreMaterial.color.copy(ENGINE_COLOR).multiplyScalar(0.4 + level * 0.8);
     this.plumeMaterial.uniforms.uIntensity!.value = level;
-    for (const glow of this.engineGlows) glow.material.opacity = Math.min(1, 0.2 + level * 0.4);
+    for (const glow of this.engineGlows) glow.material.opacity = Math.min(1, 0.15 + level * 0.25);
   }
 
   private track<T extends { dispose(): void }>(resource: T): T {
