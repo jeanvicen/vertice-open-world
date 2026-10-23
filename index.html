@@ -3,79 +3,199 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
-    <meta name="theme-color" content="#111311" />
+    <meta name="theme-color" content="#000000" />
+    <meta name="color-scheme" content="dark" />
     <meta
       name="description"
-      content="VÉRTICE — an original cinematic open-world game in development."
+      content="VÉRTICE — an original cinematic science-fiction game in development."
     />
-    <title>VÉRTICE — Field test 00</title>
+    <meta name="mobile-web-app-capable" content="yes" />
+    <meta name="apple-mobile-web-app-capable" content="yes" />
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+    <meta name="apple-mobile-web-app-title" content="VÉRTICE" />
+    <link rel="manifest" href="/manifest.webmanifest" />
+    <link rel="icon" href="/icons/icon.svg" type="image/svg+xml" />
+    <link rel="apple-touch-icon" href="/icons/apple-touch-icon.png" />
+    <title>VÉRTICE</title>
+    <style>
+      /* Black from the very first paint, before any stylesheet or script arrives. */
+      html,
+      body {
+        margin: 0;
+        background: #000;
+      }
+    </style>
   </head>
   <body>
-    <main class="experience" aria-label="VÉRTICE interactive world prototype">
-      <canvas id="game-canvas" aria-label="Interactive 3D environment"></canvas>
-      <div class="vignette" aria-hidden="true"></div>
-      <header class="masthead">
-        <a class="wordmark" href="#world" aria-label="VÉRTICE home">VÉRTICE<span>.</span></a>
-        <span class="build-tag"><i aria-hidden="true"></i> IN DEVELOPMENT</span>
+    <main class="experience" id="experience" data-view="intro">
+      <canvas
+        id="game-canvas"
+        role="img"
+        aria-label="A ship crosses deep space towards a vast planet lit from behind by its star"
+      ></canvas>
+      <div class="scene-grade" aria-hidden="true"></div>
+
+      <header class="title-block" id="title-block" data-visible="false">
+        <h1 class="title">
+          <span class="visually-hidden">VÉRTICE</span>
+          <span class="title-word" aria-hidden="true"
+            ><span style="--i: 0">V</span><span style="--i: 1">É</span><span style="--i: 2">R</span
+            ><span style="--i: 3">T</span><span style="--i: 4">I</span><span style="--i: 5">C</span
+            ><span style="--i: 6">E</span></span
+          >
+        </h1>
+        <span class="title-rule" aria-hidden="true"></span>
       </header>
-      <section class="field-note" id="world" aria-labelledby="world-title">
-        <p class="eyebrow"><span>01</span> &nbsp; THE CROSSING</p>
-        <h1 id="world-title">A world<br />taking shape.</h1>
-        <p class="description">
-          A first look at the landscape beyond the horizon.<br class="desktop-only" />
-          This place is still yours to discover.
-        </p>
-        <div class="scene-marker" aria-hidden="true">
-          <span></span> WORLD BLOCK 00 <span class="marker-line"></span> UNMAPPED
+
+      <nav class="main-menu" id="main-menu" aria-label="Main menu" data-visible="false" inert>
+        <ul class="menu-list">
+          <li class="menu-item" style="--i: 0">
+            <button
+              class="menu-button"
+              type="button"
+              data-action="play"
+              aria-describedby="play-status"
+              disabled
+            >
+              PLAY
+            </button>
+            <span class="menu-status" id="play-status">In development</span>
+          </li>
+          <li class="menu-item" style="--i: 1">
+            <button class="menu-button" type="button" data-action="settings">SETTINGS</button>
+          </li>
+          <li class="menu-item" style="--i: 2">
+            <button class="menu-button" type="button" data-action="credits">CREDITS</button>
+          </li>
+        </ul>
+      </nav>
+
+      <section
+        class="settings-panel"
+        id="settings-panel"
+        aria-labelledby="settings-heading"
+        data-visible="false"
+        inert
+      >
+        <div class="panel-head">
+          <button class="back-button" type="button" data-action="back">
+            <span aria-hidden="true">←</span> Back<span class="visually-hidden"> to main menu</span>
+          </button>
+          <h2 id="settings-heading" tabindex="-1">Settings</h2>
+        </div>
+        <div class="settings-scroll">
+          <fieldset class="setting">
+            <legend>Graphics quality</legend>
+            <div class="segmented">
+              <label
+                ><input type="radio" name="quality" value="auto" /><span>Automatic</span></label
+              >
+              <label><input type="radio" name="quality" value="low" /><span>Low</span></label>
+              <label><input type="radio" name="quality" value="medium" /><span>Medium</span></label>
+              <label><input type="radio" name="quality" value="high" /><span>High</span></label>
+            </div>
+            <p class="setting-note" id="quality-note" aria-live="polite"></p>
+          </fieldset>
+
+          <div class="setting">
+            <div class="setting-row">
+              <label for="render-scale">Render scale</label>
+              <output id="render-scale-value" for="render-scale">100%</output>
+            </div>
+            <input
+              id="render-scale"
+              type="range"
+              min="50"
+              max="100"
+              step="5"
+              value="100"
+              aria-describedby="render-scale-note"
+            />
+            <p class="setting-note" id="render-scale-note">
+              Fewer rendered pixels: cooler, longer-lasting play on phones.
+            </p>
+          </div>
+
+          <div class="setting">
+            <div class="setting-row">
+              <label for="master-volume">Master volume</label>
+              <output id="master-volume-value" for="master-volume">70%</output>
+            </div>
+            <input
+              id="master-volume"
+              type="range"
+              min="0"
+              max="100"
+              step="5"
+              value="70"
+              aria-describedby="volume-note"
+            />
+            <p class="setting-note" id="volume-note" aria-live="polite"></p>
+          </div>
+
+          <fieldset class="setting">
+            <legend>Reduced cinematic motion</legend>
+            <div class="segmented">
+              <label><input type="radio" name="motion" value="system" /><span>System</span></label>
+              <label><input type="radio" name="motion" value="reduced" /><span>On</span></label>
+              <label><input type="radio" name="motion" value="full" /><span>Off</span></label>
+            </div>
+            <p class="setting-note" id="motion-note" aria-live="polite"></p>
+          </fieldset>
+
+          <div class="setting" id="fullscreen-setting" hidden>
+            <div class="setting-row">
+              <span class="setting-label">Display</span>
+              <button class="pill-button" id="fullscreen-toggle" type="button" aria-pressed="false">
+                Enter fullscreen
+              </button>
+            </div>
+          </div>
         </div>
       </section>
-      <div class="coordinates" aria-hidden="true">
-        FIELD STUDY &nbsp;·&nbsp; 38° 12′ N, 06° 44′ W
+
+      <section
+        class="credits"
+        id="credits"
+        aria-labelledby="credits-heading"
+        data-visible="false"
+        inert
+      >
+        <h2 class="visually-hidden" id="credits-heading" tabindex="-1">Credits</h2>
+        <div class="credits-viewport" id="credits-viewport">
+          <div class="credits-roll" id="credits-roll"></div>
+        </div>
+        <button class="back-button credits-back" type="button" data-action="back">
+          <span aria-hidden="true">←</span> Back<span class="visually-hidden"> to main menu</span>
+        </button>
+      </section>
+
+      <button class="skip-intro" id="skip-intro" type="button" data-visible="false">
+        Skip intro
+      </button>
+      <p class="runtime-status" id="runtime-status" role="status" aria-live="polite" hidden></p>
+
+      <!-- Controls for the walkable world scene; shown once PLAY leads somewhere. -->
+      <div class="world-hud" id="world-hud" hidden>
+        <nav class="touch-controls" aria-label="Touch movement controls">
+          <button type="button" data-move="forward" aria-label="Move forward">↑</button>
+          <div>
+            <button type="button" data-move="left" aria-label="Move left">←</button
+            ><button type="button" data-move="backward" aria-label="Move backward">↓</button
+            ><button type="button" data-move="right" aria-label="Move right">→</button>
+          </div>
+        </nav>
       </div>
-      <aside class="controls" aria-label="Controls and rendering settings">
-        <span class="controls-title">EXPLORE THE SCENE</span>
-        <span class="control-hint"
-          >Drag to look <span class="control-divider">·</span> WASD to move</span
-        >
-        <div class="quality-row">
-          <label for="quality-setting">QUALITY</label>
-          <select id="quality-setting" aria-label="Graphics quality">
-            <option value="low">Low</option>
-            <option value="balanced" selected>Balanced</option>
-            <option value="high">High</option>
-          </select>
-        </div>
-        <div class="quality-row resolution-row">
-          <label for="resolution-setting">RESOLUTION</label>
-          <input
-            id="resolution-setting"
-            type="range"
-            min="0.55"
-            max="1"
-            step="0.05"
-            value="1"
-            aria-label="Render resolution scale"
-          />
-        </div>
-      </aside>
-      <nav class="touch-controls" aria-label="Touch movement controls">
-        <button data-move="forward" aria-label="Move forward">↑</button>
-        <div>
-          <button data-move="left" aria-label="Move left">←</button
-          ><button data-move="backward" aria-label="Move backward">↓</button
-          ><button data-move="right" aria-label="Move right">→</button>
-        </div>
-      </nav>
-      <footer class="footer-bar">
-        <span>AN ORIGINAL WORLD BY VÉRTICE</span
-        ><span id="runtime-status" role="status" aria-live="polite">INITIALIZING WORLD</span>
-      </footer>
+
       <section id="fatal-error" class="fatal-error" role="alert" hidden>
-        <h2>The world could not start.</h2>
+        <h2>VÉRTICE could not start.</h2>
         <p id="fatal-error-message">Check that WebGL is enabled in your browser.</p>
-        <button id="retry-button" type="button">TRY AGAIN</button>
+        <button id="retry-button" type="button">Try again</button>
       </section>
     </main>
+    <noscript>
+      <p class="noscript">VÉRTICE needs JavaScript and WebGL 2 to run.</p>
+    </noscript>
     <script type="module" src="/src/app/bootstrap.ts"></script>
   </body>
 </html>

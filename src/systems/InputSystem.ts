@@ -16,6 +16,12 @@ const KEY_DIRECTION: Readonly<Record<string, MoveDirection>> = {
   ArrowRight: 'right',
 };
 
+/** Keys typed into menus and form controls belong to those controls, not to movement. */
+function isInteractiveTarget(target: EventTarget | null): boolean {
+  if (!(target instanceof HTMLElement)) return false;
+  return target.isContentEditable || /^(INPUT|SELECT|TEXTAREA|BUTTON)$/.test(target.tagName);
+}
+
 export class InputSystem {
   private readonly pressedKeys = new Set<string>();
   private readonly pressedButtons = new Map<MoveDirection, Set<number>>();
@@ -79,6 +85,7 @@ export class InputSystem {
   }
 
   private readonly handleKeyDown = (event: KeyboardEvent): void => {
+    if (isInteractiveTarget(event.target)) return;
     if (event.code in KEY_DIRECTION) {
       event.preventDefault();
       this.pressedKeys.add(event.code);

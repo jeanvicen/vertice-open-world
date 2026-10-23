@@ -8,6 +8,8 @@ export class Game {
   private readonly loop: GameLoop;
   public onContextLost: (() => void) | undefined;
   public onContextRestored: (() => void) | undefined;
+  /** Receives each simulated frame's capped duration, e.g. for adaptive quality. */
+  public onFrame: ((deltaSeconds: number) => void) | undefined;
 
   public constructor(
     private readonly renderer: Renderer,
@@ -15,7 +17,10 @@ export class Game {
     private readonly input: InputSystem,
   ) {
     this.loop = new GameLoop(
-      (delta) => this.scenes.update(delta),
+      (delta) => {
+        this.scenes.update(delta);
+        this.onFrame?.(delta);
+      },
       () => this.scenes.render(this.renderer.instance),
     );
     this.renderer.onResize = (width, height): void => this.scenes.resize(width, height);
