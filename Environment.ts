@@ -1,7 +1,6 @@
 import type { Scene } from 'three';
 import {
   BoxGeometry,
-  BufferGeometry,
   type BufferGeometry,
   DirectionalLight,
   HemisphereLight,

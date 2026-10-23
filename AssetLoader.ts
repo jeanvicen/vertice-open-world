@@ -1,4 +1,9 @@
 import { AudioLoader, TextureLoader, type Object3D, type Texture } from 'three';
+
+type AudioBufferAsset =
+  ReturnType<InstanceType<typeof AudioLoader>['loadAsync']> extends Promise<infer Result>
+    ? Result
+    : never;
 import { GLTFLoader, type GLTF } from 'three/addons/loaders/GLTFLoader.js';
 import { BASE_URL } from '../app/config';
 import type { AssetEntry } from './AssetManifest';
@@ -9,7 +14,7 @@ export interface LoadingProgress {
   readonly currentAsset: string;
 }
 
-type LoadedAsset = GLTF | Texture | AudioBuffer;
+type LoadedAsset = GLTF | Texture | AudioBufferAsset;
 
 /** Loads only manifest-approved files; ownership transfers to the scene using each returned asset. */
 export class AssetLoader {
@@ -63,8 +68,7 @@ export class AssetLoader {
 
   public dispose(): void {
     for (const asset of this.loaded.values()) {
-      if ('dispose' in asset && typeof asset.dispose === 'function') asset.dispose();
-      else if ('scene' in asset) {
+      if ('scene' in asset) {
         asset.scene.traverse((object: Object3D) => {
           const mesh = object as typeof object & {
             geometry?: { dispose(): void };
@@ -77,6 +81,8 @@ export class AssetLoader {
               material.dispose();
           }
         });
+      } else if ('dispose' in asset && typeof asset.dispose === 'function') {
+        asset.dispose();
       }
     }
     this.loaded.clear();
