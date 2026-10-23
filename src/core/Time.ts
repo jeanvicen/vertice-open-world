@@ -16,10 +16,11 @@ export class Time {
       this.deltaSeconds = 0;
       return this.deltaSeconds;
     }
-    this.deltaSeconds = Math.min(
-      Math.max(nowSeconds - this.lastTimestamp, 0),
-      MAX_FRAME_DELTA_SECONDS,
-    );
+    if (nowSeconds < this.lastTimestamp) {
+      this.deltaSeconds = 0;
+      return this.deltaSeconds;
+    }
+    this.deltaSeconds = Math.min(nowSeconds - this.lastTimestamp, MAX_FRAME_DELTA_SECONDS);
     this.lastTimestamp = nowSeconds;
     this.elapsedSeconds += this.deltaSeconds;
     return this.deltaSeconds;
